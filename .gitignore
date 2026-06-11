@@ -1,0 +1,43 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-electron
+release
+*.tsbuildinfo
+
+# Packaged artifacts
+*.dmg
+*.zip
+*.exe
+*.msi
+*.asar
+
+# Environment and secrets
+.env
+.env.local
+.env.production
+*.pem
+*.p12
+*.key
+*.crt
+*.jks
+*.keystore
+*.mobileprovision
+website-admin-login.txt
+
+# Local tooling
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+.claude
+*.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
