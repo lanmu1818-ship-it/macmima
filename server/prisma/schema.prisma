@@ -38,6 +38,19 @@ model User {
   @@map("users")
 }
 
+model Workspace {
+  id          String   @id @default(uuid())
+  keyHash     String   @unique @map("key_hash") @db.VarChar(64)
+  name        String   @default("MacMima 工作台") @db.VarChar(100)
+  createdBy   String?  @map("created_by")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([createdBy])
+  @@map("workspaces")
+}
+
 model InviteCode {
   id            String        @id @default(uuid())
   workspaceKeyHash String?    @map("workspace_key_hash") @db.VarChar(64)

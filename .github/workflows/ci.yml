@@ -23,6 +23,8 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: mysql://macmima:password@localhost:3306/macmima
     defaults:
       run:
         working-directory: server
@@ -37,6 +39,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: server/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma validate
       - run: pnpm exec prisma generate
       - run: pnpm build
       - run: pnpm audit --prod
