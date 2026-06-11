@@ -1,55 +1,143 @@
-# Security Policy
+# 安全策略
 
-## Supported Versions
+MacMima 面向开发者保存高敏感凭证，因此安全模型必须说清楚：哪些内容会进入后端，
+哪些内容不会进入后端，数据库泄露时能保护什么，当前版本还有哪些边界。
 
-Security fixes are currently prepared against the latest `main` branch.
+## 一句话结论
 
-## Reporting a Vulnerability
+MacMima 不把明文网站密码、明文数据库密码、明文 API Key、明文 SSH 私钥直接保存到后端数据库。
 
-Please do not open a public issue for a suspected vulnerability.
+凭证正文会先在桌面端加密，再上传到后端。后端保存的是密文、IV、认证标签和必要元数据。
 
-Send a private report to the project maintainers with:
+## 后端数据库保存什么
 
-- A short description of the issue
-- Reproduction steps
-- Impact assessment
-- Affected version or commit
-- Any suggested fix
+| 内容 | 后端数据库是否明文保存 | 说明 |
+| --- | --- | --- |
+| 网站密码、数据库密码、API Key、SSH 私钥、连接字符串 | 否 | 在桌面端加密后成为 `encryptedData` |
+| 数据库表关系、表说明、备注正文 | 否 | 属于凭证正文，一起加密 |
+| 用户主密码 | 否 | 不上传后端 |
+| 登录校验值 | 否，不是明文密码 | 后端存 Argon2id verifier，并加入 `AUTH_PEPPER` |
+| `encryptedData`、`iv`、`authTag` | 是 | 这是加密结果，用于同步和解密校验 |
+| 标题、分类、标签、scope、创建时间 | 是 | 用于列表展示、筛选和协作 |
 
-If you fork or self-host MacMima, rotate any affected secrets immediately when
-a vulnerability involves deployment configuration, database access, object
-storage keys, JWT secrets, or `AUTH_PEPPER`.
+请不要把真正的 Secret 写进凭证标题或标签，因为这些属于明文元数据。
 
-## Current Security Model
+## 个人密区如何保护
 
-- Credential contents are encrypted client-side before upload.
-- The server stores ciphertext, IV/nonce, auth tags, and metadata.
-- User master passwords are not sent to the backend.
-- Backend login verifiers are protected with Argon2id and `AUTH_PEPPER`.
-- `AUTH_PEPPER` must be stored only in the server environment or secret
-  manager. It must not be committed to Git or stored in the database.
-- Local desktop API access requires a local API key and listens on
-  `127.0.0.1`.
+个人密区使用用户主密码派生 AES-GCM 密钥：
 
-## Known Hardening Roadmap
+1. 用户在桌面端输入主密码。
+2. 桌面端使用用户 salt 和 PBKDF2 派生 AES-GCM 密钥。
+3. 凭证正文在桌面端加密。
+4. 后端只保存密文、IV、认证标签和元数据。
+5. 解密只在已解锁的桌面端完成。
 
-- Replace workspace-key-derived shared vault encryption with per-user public
-  key wrapping for shared vault keys.
-- Add encrypted local backup export and recovery-key workflows.
-- Add full Prisma migrations for repeatable deployments.
-- Enable stronger Electron sandboxing and production code-signing hardening.
-- Complete lint cleanup and add stricter CI gates.
+主密码不发送到后端。如果用户忘记主密码，后端无法恢复个人密区明文。
 
-## Deployment Notes
+## 共享密区如何保护
 
-Use long random values for:
+当前版本的共享密区使用工作台 Key 派生共享密钥。这样同一个工作台下拥有共享权限的成员可以读取共享密区。
 
-- `JWT_SECRET`
-- `AUTH_PEPPER`
-- Database passwords
+这不是最终形态的团队密钥方案。它的边界是：
 
-Example:
+- 只泄露数据库时，攻击者仍然拿不到共享密区明文，因为数据库里没有工作台 Key 明文。
+- 如果后端运行环境被完全入侵，攻击者可能通过请求链路、内存或错误日志配置捕获工作台 Key。
+- 捕获工作台 Key 后，共享密区风险会升高。
+
+后续路线是改为“每个用户公钥包装共享 vault key”，减少工作台 Key 对共享密区加密的影响。
+
+## 登录密码如何处理
+
+为了让主密码同时用于本地加密，MacMima 不把明文主密码发给后端。
+
+认证流程：
+
+1. 前端使用主密码和 salt 计算登录校验 hash。
+2. 后端把这个登录校验 hash 再经过 Argon2id 和 `AUTH_PEPPER` 后保存。
+3. 登录时，后端校验 Argon2id verifier。
+4. 校验成功后签发 JWT。
+
+注意：登录校验 hash 在认证流程里相当于登录凭据，所以生产环境必须使用 HTTPS，
+后端不能记录请求体日志。
+
+## 数据库泄露时会怎样
+
+如果攻击者只拿到 MySQL 数据库：
+
+- 不能直接看到网站密码、数据库密码、API Key、SSH 私钥。
+- 不能直接得到用户主密码。
+- 能看到凭证标题、分类、标签、scope、创建时间等元数据。
+- 能看到凭证密文、IV、认证标签。
+- 能看到用户邮箱、用户名、salt 和登录 verifier。
+
+因此数据库备份仍然是敏感资产，必须加密保存，但数据库泄露不等于明文凭证泄露。
+
+## 后端被完全入侵时会怎样
+
+如果攻击者控制了后端运行环境，风险会比单纯数据库泄露更高：
+
+- 攻击者可能篡改 API 响应、影响同步和权限。
+- 如果错误记录请求体，可能泄露登录校验 hash 或工作台 Key。
+- 共享密区可能受工作台 Key 暴露影响。
+- 个人密区仍依赖用户主密码派生密钥；仅有后端数据库和登录 verifier 不能直接解密个人密区。
+
+处理建议：
+
+- 立即下线服务并保留证据。
+- 轮换 `JWT_SECRET`、`AUTH_PEPPER`、数据库密码和工作台 Key。
+- 检查访问日志、进程日志和反向代理日志是否记录了敏感请求体。
+- 通知用户重新登录，并根据风险要求用户更换主密码。
+- 对共享密区凭证做一次供应商侧轮换，比如重置 API Key、数据库密码、SSH Key。
+
+## 本地 API 安全边界
+
+本地 API 只监听 `127.0.0.1`，需要 Local API Key。
+
+本地 API 收到凭证后，不会直接绕过加密写入后端。请求会交给已解锁的桌面端，
+由桌面端加密后再调用后端 API 保存。
+
+建议：
+
+- 不使用时关闭本地 API。
+- 不要把 Local API Key 写进公开仓库或共享脚本。
+- 只允许可信本机工具调用。
+
+## 自托管部署建议
+
+- 后端只监听 `127.0.0.1`，通过 Caddy 或 Nginx 对外提供 HTTPS。
+- MySQL 只允许本机连接。
+- 使用独立低权限数据库用户，不使用 root。
+- `JWT_SECRET` 和 `AUTH_PEPPER` 使用不同的长随机值。
+- `.env` 不进入 Git。
+- 禁止在日志中记录请求体。
+- 定期备份数据库，并加密保存备份。
+- 定期运行 `pnpm audit --prod`。
+
+生成随机值示例：
 
 ```bash
 openssl rand -base64 32
 ```
+
+## 已知加固路线
+
+- 将共享密区从工作台 Key 派生密钥升级为每用户公钥包装共享 vault key。
+- 增加加密本地备份和恢复密钥流程。
+- 补齐 Prisma migrations，替代生产环境 `db push`。
+- 加强 Electron sandbox、代码签名和自动更新链路安全。
+- 完成 lint 清理并增加更严格的 CI 安全检查。
+
+## 报告漏洞
+
+请不要在公开 issue 中披露安全漏洞细节。
+
+报告时请提供：
+
+- 漏洞描述
+- 复现步骤
+- 影响范围
+- 受影响版本或 commit
+- 可能的修复建议
+
+如果你 fork 或自托管 MacMima，并怀疑部署配置、数据库、对象存储密钥、JWT
+密钥或 `AUTH_PEPPER` 泄露，请立即轮换相关密钥。
