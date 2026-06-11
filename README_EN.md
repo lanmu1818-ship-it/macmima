@@ -5,6 +5,15 @@
 <h1 align="center">MacMima</h1>
 
 <p align="center">
+  <a href="https://github.com/lanmu1818-ship-it/macmima/actions/workflows/ci.yml">
+    <img src="https://github.com/lanmu1818-ship-it/macmima/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-black.svg" alt="MIT License" />
+  </a>
+</p>
+
+<p align="center">
   A secure, self-hostable vault for new AI developers to organize accounts, passwords,
   API keys, server keys, database credentials, and team configuration notes.
 </p>
@@ -89,6 +98,7 @@ Start the backend:
 cd server
 pnpm install
 cp .env.example .env
+# Edit .env and configure DATABASE_URL, JWT_SECRET, AUTH_PEPPER
 npx prisma generate
 npx prisma db push
 pnpm build
@@ -104,6 +114,7 @@ For production backend setup, read [Backend Deployment](./docs/en/BACKEND_DEPLOY
 - [Backend Deployment](./docs/en/BACKEND_DEPLOYMENT.md)
 - [Technical Overview](./docs/en/TECHNICAL_OVERVIEW.md)
 - [Local API](./docs/en/LOCAL_API.md)
+- [Documentation Index](./docs/en/README.md)
 - [Security Model](./docs/en/SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
 

@@ -5,6 +5,15 @@
 <h1 align="center">MacMima</h1>
 
 <p align="center">
+  <a href="https://github.com/lanmu1818-ship-it/macmima/actions/workflows/ci.yml">
+    <img src="https://github.com/lanmu1818-ship-it/macmima/actions/workflows/ci.yml/badge.svg" alt="CI" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-black.svg" alt="MIT License" />
+  </a>
+</p>
+
+<p align="center">
   为新晋 AI 开发者准备的账号、密码、API Key、服务器密钥、数据库凭证与团队配置安全储存方案。
 </p>
 
@@ -85,6 +94,7 @@ pnpm electron:dev
 cd server
 pnpm install
 cp .env.example .env
+# 编辑 .env，配置 DATABASE_URL、JWT_SECRET、AUTH_PEPPER
 npx prisma generate
 npx prisma db push
 pnpm build
@@ -100,6 +110,7 @@ pnpm start
 - [后端部署教程](./docs/BACKEND_DEPLOYMENT.md)
 - [技术文档](./docs/TECHNICAL_OVERVIEW.md)
 - [本地 API 接入](./docs/LOCAL_API.md)
+- [文档总目录](./docs/README.md)
 - [安全策略](./SECURITY.md)
 - [贡献指南](./CONTRIBUTING.md)
 

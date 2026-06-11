@@ -23,6 +23,8 @@ Backend:
 ```bash
 cd server
 pnpm install
+export DATABASE_URL="mysql://macmima:password@localhost:3306/macmima"
+npx prisma validate
 npx prisma generate
 pnpm build
 pnpm audit --prod
@@ -39,6 +41,12 @@ Please include:
 
 Do not include production secrets, private keys, deployment logs, packaged
 installers, local databases, or generated `node_modules`/`dist` artifacts.
+
+Before submitting, search for accidental secrets:
+
+```bash
+rg -n -i "BEGIN .*PRIVATE KEY|API_SECRET|ACCESS_KEY|JWT_SECRET|AUTH_PEPPER|DATABASE_URL=.*@" .
+```
 
 ## Code Style
 
