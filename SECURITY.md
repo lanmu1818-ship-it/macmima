@@ -1,5 +1,7 @@
 # 安全策略
 
+English version: [docs/en/SECURITY.md](./docs/en/SECURITY.md)
+
 MacMima 面向开发者保存高敏感凭证，因此安全模型必须说清楚：哪些内容会进入后端，
 哪些内容不会进入后端，数据库泄露时能保护什么，当前版本还有哪些边界。
 

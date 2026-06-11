@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  <a href="./README_EN.md">English</a>
+  ·
+  <a href="./README.md">简体中文</a>
+  ·
   <a href="https://macmima.flnxi.com">官网演示</a>
   ·
   <a href="./docs/APP_USAGE.md">APP 使用方法</a>
