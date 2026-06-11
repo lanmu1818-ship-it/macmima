@@ -41,6 +41,15 @@ environment notes, and database table documentation.
 MacMima is an open-source desktop credential vault designed to bring those developer
 secrets into one encrypted, self-hostable, team-friendly workspace.
 
+## Product Screenshots
+
+The screenshots below use fictional demo data only. They do not contain real accounts,
+passwords, API keys, server addresses, or production records.
+
+![MacMima Shared Vault demo screenshot](./docs/assets/macmima-demo-vault.png)
+
+![MacMima database credential and table notes demo screenshot](./docs/assets/macmima-demo-database.png)
+
 ## Core Features
 
 - Personal Vault: store credentials that only the current user can decrypt.

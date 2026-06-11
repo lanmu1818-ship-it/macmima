@@ -40,6 +40,14 @@ AI 开发者很快会积累一批高敏感资料：模型平台 API Key、云服
 MacMima 是一个开源桌面密钥库，目标是把这些开发凭证收进一个可自托管、
 可团队协作、默认加密的工作台里。
 
+## 产品截图
+
+以下截图仅使用虚构演示数据，不包含真实账号、密码、API Key、服务器地址或生产记录。
+
+![MacMima 共享密区演示截图](./docs/assets/macmima-demo-vault.png)
+
+![MacMima 数据库凭证与表说明演示截图](./docs/assets/macmima-demo-database.png)
+
 ## 核心能力
 
 - 个人密区：保存只有自己能解密的账号、密码、Key、服务器和数据库凭证。
