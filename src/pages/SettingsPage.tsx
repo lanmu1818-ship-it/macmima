@@ -102,18 +102,21 @@ export default function SettingsPage() {
   "content": "# Responses API\\n\\n## Endpoint\\nPOST /v1/responses\\n\\n保存请求说明、字段含义和注意事项。",
   "tags": ["API文档", "团队共享"]
 }`
-  const localApiCurlDisplay = `curl -X POST "${localApiRequestUrl}" \\
-  -H "Content-Type: application/json" \\
-  -H "X-MacMima-Local-Api-Key: 你的API_KEY" \\
-  --data '${localApiExampleBody}'`
+  const localApiExampleApiKey = localApiDraft.apiKey || '请先生成_API_KEY'
+  const localApiHeaderValue = `X-MacMima-Local-Api-Key: ${localApiExampleApiKey}`
   const localApiCurlCopy = `curl -X POST "${localApiRequestUrl}" \\
   -H "Content-Type: application/json" \\
-  -H "X-MacMima-Local-Api-Key: ${localApiDraft.apiKey || '你的API_KEY'}" \\
+  -H "${localApiHeaderValue}" \\
   --data '${localApiExampleBody}'`
   const localApiDocumentCurlCopy = `curl -X POST "${localApiRequestUrl}" \\
   -H "Content-Type: application/json" \\
-  -H "X-MacMima-Local-Api-Key: ${localApiDraft.apiKey || '你的API_KEY'}" \\
+  -H "${localApiHeaderValue}" \\
   --data '${localApiDocumentBody}'`
+  const localApiCurlDisplay = `# 保存数据库账号
+${localApiCurlCopy}
+
+# 保存 Markdown 文档
+${localApiDocumentCurlCopy}`
 
   useEffect(() => {
     let isMounted = true
@@ -804,7 +807,7 @@ export default function SettingsPage() {
                     <div>
                       <p className="font-medium text-gray-900">调用文档</p>
                       <p className="text-xs text-gray-500 mt-1">
-                        其他软件用 POST 向本机推送凭证，MacMima 需要保持打开并已解锁。
+                        其他软件用 POST 向本机推送凭证，示例已自动带入当前 API Key，复制即可调用。
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -841,7 +844,7 @@ export default function SettingsPage() {
                     <div className="rounded-md border border-gray-200 bg-white px-3 py-2 md:col-span-2">
                       <p className="text-gray-500">Header</p>
                       <p className="font-mono text-gray-900 mt-1 break-all">
-                        X-MacMima-Local-Api-Key: 你的API_KEY
+                        {localApiHeaderValue}
                       </p>
                     </div>
                   </div>

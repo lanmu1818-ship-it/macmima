@@ -1,4 +1,14 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, safeStorage, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  safeStorage,
+  shell,
+  Menu,
+  nativeImage,
+  Tray,
+} from 'electron'
 import { createServer } from 'http'
 import type { IncomingMessage, Server, ServerResponse } from 'http'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
@@ -13,8 +23,10 @@ const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
 const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
 let localApiServer: Server | null = null
 let localApiLastError: string | null = null
+let isQuitting = false
 
 interface LocalApiConfig {
   enabled: boolean
@@ -196,9 +208,7 @@ function normalizeLocalApiConfig(config?: Partial<LocalApiConfig> | null): Local
 
   return {
     enabled: Boolean(config?.enabled),
-    port: Number.isInteger(port) && port >= 1024 && port <= 65535
-      ? port
-      : DEFAULT_LOCAL_API_PORT,
+    port: Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : DEFAULT_LOCAL_API_PORT,
     apiKey,
   }
 }
@@ -306,9 +316,7 @@ function normalizeString(value: unknown) {
 function normalizeTags(value: unknown) {
   if (!Array.isArray(value)) return []
 
-  return value
-    .map((tag) => normalizeString(tag))
-    .filter(Boolean)
+  return value.map((tag) => normalizeString(tag)).filter(Boolean)
 }
 
 function normalizeDatabaseTables(value: unknown) {
@@ -332,7 +340,8 @@ function inferCredentialCategory(input: Record<string, any>, data: Record<string
   if (allowed.includes(category)) return category
   if (allowed.includes(type)) return type
   if (format === 'markdown' || data.content || input.markdown || input.document) return 'document'
-  if (data.database || data.connectionString || input.tables || input.databaseTables) return 'database'
+  if (data.database || data.connectionString || input.tables || input.databaseTables)
+    return 'database'
   if (data.url) return 'website'
   if (data.apiKey || data.apiSecret || data.accessKeyId || data.accessKeySecret) return 'api_key'
   if (data.host) return 'server'
@@ -383,7 +392,9 @@ function normalizeCredentialPayload(input: Record<string, any>) {
     data.format = 'markdown'
     data.content = String(data.content || data.markdown || input.markdown || input.document || '')
     data.description = normalizeString(data.description || input.description)
-    data.sourceFileName = normalizeString(data.sourceFileName || input.sourceFileName || input.fileName)
+    data.sourceFileName = normalizeString(
+      data.sourceFileName || input.sourceFileName || input.fileName
+    )
     delete data.markdown
   }
 
@@ -532,7 +543,79 @@ async function applyLocalApiConfig(config: LocalApiConfig) {
   } catch (error: any) {
     localApiLastError = error.message || '本地 API 启动失败'
     throw error
+  } finally {
+    updateTrayMenu()
   }
+}
+
+function shouldHideToTray() {
+  return process.platform === 'win32' || process.platform === 'linux'
+}
+
+function getTrayIcon() {
+  const candidates = [
+    path.join(app.getAppPath(), 'build', 'icon.png'),
+    path.join(process.resourcesPath, 'build', 'icon.png'),
+    path.join(__dirname, '../build/icon.png'),
+  ]
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue
+
+    const icon = nativeImage.createFromPath(candidate)
+    if (!icon.isEmpty()) return icon.resize({ width: 16, height: 16 })
+  }
+
+  return nativeImage.createEmpty()
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow()
+    return
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function updateTrayMenu() {
+  if (!tray) return
+
+  const apiStatus = localApiConfig.enabled
+    ? localApiServer
+      ? `本地 API: 运行中 (${localApiConfig.port})`
+      : `本地 API: 未运行${localApiLastError ? ` - ${localApiLastError}` : ''}`
+    : '本地 API: 未启用'
+
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '打开 MacMima', click: showMainWindow },
+      { label: apiStatus, enabled: false },
+      { type: 'separator' },
+      {
+        label: '退出 MacMima',
+        click: () => {
+          isQuitting = true
+          app.quit()
+        },
+      },
+    ])
+  )
+}
+
+function createTray() {
+  if (!shouldHideToTray() || tray) return
+
+  tray = new Tray(getTrayIcon())
+  tray.setToolTip('MacMima')
+  tray.on('click', showMainWindow)
+  tray.on('double-click', showMainWindow)
+  updateTrayMenu()
 }
 
 function createWindow() {
@@ -558,6 +641,13 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  mainWindow.on('close', (event) => {
+    if (shouldHideToTray() && !isQuitting) {
+      event.preventDefault()
+      mainWindow?.hide()
+    }
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
@@ -567,19 +657,17 @@ app.whenReady().then(() => {
   localApiConfig = loadLocalApiConfig()
 
   createWindow()
+  createTray()
   applyLocalApiConfig(localApiConfig).catch((error) => {
     console.error('启动本地 API 失败:', error)
   })
 
   // 注册全局快捷键 Cmd+Shift+P 快速启动
   globalShortcut.register('CommandOrControl+Shift+P', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide()
-      } else {
-        mainWindow.show()
-        mainWindow.focus()
-      }
+    if (mainWindow?.isVisible()) {
+      mainWindow.hide()
+    } else {
+      showMainWindow()
     }
   })
 
@@ -593,14 +681,21 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
+      return
     }
+
+    showMainWindow()
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && isQuitting) {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  isQuitting = true
 })
 
 app.on('will-quit', () => {
