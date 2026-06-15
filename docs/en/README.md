@@ -13,6 +13,7 @@ Chinese documentation: [docs/README.md](../README.md)
 4. [Backend Deployment](./BACKEND_DEPLOYMENT.md)
 5. [Technical Overview](./TECHNICAL_OVERVIEW.md)
 6. [Local API](./LOCAL_API.md)
+7. [Release And Installer Builds](./RELEASES.md)
 
 ## By Role
 
@@ -37,6 +38,7 @@ Contributors:
 
 - [Contributing Guide](../../CONTRIBUTING.md)
 - [Technical Overview](./TECHNICAL_OVERVIEW.md)
+- [Release And Installer Builds](./RELEASES.md)
 - [Security Model](./SECURITY.md)
 
 ## Important Security Note

@@ -29,6 +29,8 @@
   <a href="./docs/BACKEND_DEPLOYMENT.md">后端部署教程</a>
   ·
   <a href="./docs/TECHNICAL_OVERVIEW.md">技术文档</a>
+  ·
+  <a href="./docs/RELEASES.md">发布构建</a>
 </p>
 
 ## 项目定位
@@ -118,6 +120,7 @@ pnpm start
 - [后端部署教程](./docs/BACKEND_DEPLOYMENT.md)
 - [技术文档](./docs/TECHNICAL_OVERVIEW.md)
 - [本地 API 接入](./docs/LOCAL_API.md)
+- [发布与安装包构建](./docs/RELEASES.md)
 - [文档总目录](./docs/README.md)
 - [安全策略](./SECURITY.md)
 - [贡献指南](./CONTRIBUTING.md)
@@ -148,6 +151,9 @@ pnpm electron:build:win
 安装包会输出到 `release/`，该目录已被 Git 忽略。
 
 Windows 正式发布物应使用 NSIS 安装器：`MacMima-版本-Setup-x64.exe`。安装器会创建桌面快捷方式、开始菜单快捷方式，并出现在 Windows 已安装应用列表中。zip 包只适合作为便携版或内部测试包。
+
+Windows 正式安装器也可以通过 GitHub Actions 的 `Build Windows Installer`
+工作流生成。详细步骤见 [发布与安装包构建](./docs/RELEASES.md)。
 
 ## 当前开源状态
 

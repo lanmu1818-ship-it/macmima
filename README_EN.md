@@ -30,6 +30,8 @@
   <a href="./docs/en/BACKEND_DEPLOYMENT.md">Backend Deployment</a>
   ·
   <a href="./docs/en/TECHNICAL_OVERVIEW.md">Technical Overview</a>
+  ·
+  <a href="./docs/en/RELEASES.md">Release Builds</a>
 </p>
 
 ## What MacMima Is
@@ -123,6 +125,7 @@ For production backend setup, read [Backend Deployment](./docs/en/BACKEND_DEPLOY
 - [Backend Deployment](./docs/en/BACKEND_DEPLOYMENT.md)
 - [Technical Overview](./docs/en/TECHNICAL_OVERVIEW.md)
 - [Local API](./docs/en/LOCAL_API.md)
+- [Release And Installer Builds](./docs/en/RELEASES.md)
 - [Documentation Index](./docs/en/README.md)
 - [Security Model](./docs/en/SECURITY.md)
 - [Contributing](./CONTRIBUTING.md)
@@ -157,6 +160,9 @@ The official Windows release artifact should be the NSIS installer:
 `MacMima-<version>-Setup-x64.exe`. The installer creates desktop and Start Menu
 shortcuts and appears in Windows installed apps. Zip archives are suitable only
 as portable/internal testing builds.
+
+The official Windows installer can also be produced through the GitHub Actions
+`Build Windows Installer` workflow. See [Release And Installer Builds](./docs/en/RELEASES.md).
 
 ## Current Open-Source Status
 

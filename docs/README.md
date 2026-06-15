@@ -12,6 +12,7 @@ English documentation: [docs/en/README.md](./en/README.md)
 4. [后端部署教程](./BACKEND_DEPLOYMENT.md)
 5. [技术文档](./TECHNICAL_OVERVIEW.md)
 6. [本地 API 接入](./LOCAL_API.md)
+7. [发布与安装包构建](./RELEASES.md)
 
 ## 按角色阅读
 
@@ -36,6 +37,7 @@ English documentation: [docs/en/README.md](./en/README.md)
 
 - [贡献指南](../CONTRIBUTING.md)
 - [技术文档](./TECHNICAL_OVERVIEW.md)
+- [发布与安装包构建](./RELEASES.md)
 - [安全策略](../SECURITY.md)
 
 ## 重要安全提醒
