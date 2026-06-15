@@ -153,6 +153,11 @@ pnpm electron:build:win
 
 Installers are written to `release/`, which is ignored by Git.
 
+The official Windows release artifact should be the NSIS installer:
+`MacMima-<version>-Setup-x64.exe`. The installer creates desktop and Start Menu
+shortcuts and appears in Windows installed apps. Zip archives are suitable only
+as portable/internal testing builds.
+
 ## Current Open-Source Status
 
 Current quality gate:

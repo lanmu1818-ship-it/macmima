@@ -147,6 +147,8 @@ pnpm electron:build:win
 
 安装包会输出到 `release/`，该目录已被 Git 忽略。
 
+Windows 正式发布物应使用 NSIS 安装器：`MacMima-版本-Setup-x64.exe`。安装器会创建桌面快捷方式、开始菜单快捷方式，并出现在 Windows 已安装应用列表中。zip 包只适合作为便携版或内部测试包。
+
 ## 当前开源状态
 
 当前质量门槛：
