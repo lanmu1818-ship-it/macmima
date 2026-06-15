@@ -23,7 +23,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm electron:build:win
+      - run: pnpm exec vite build
+
+      - run: pnpm exec electron-builder --win --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
