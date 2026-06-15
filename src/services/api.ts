@@ -24,20 +24,69 @@ export function getBackendConfig(): BackendConfig | null {
   return { backendUrl, workspaceKey }
 }
 
-export function hasBackendConfig(): boolean {
-  return Boolean(getBackendConfig())
-}
-
-export function saveBackendConfig(config: BackendConfig) {
+function saveBackendConfigToLocal(config: BackendConfig) {
   localStorage.setItem(BACKEND_URL_KEY, normalizeBackendUrl(config.backendUrl))
   localStorage.setItem(WORKSPACE_KEY_KEY, config.workspaceKey.trim())
   applyBackendConfig()
 }
 
+export function hasBackendConfig(): boolean {
+  return Boolean(getBackendConfig())
+}
+
+export function saveBackendConfig(config: BackendConfig) {
+  const normalizedConfig = {
+    backendUrl: normalizeBackendUrl(config.backendUrl),
+    workspaceKey: config.workspaceKey.trim(),
+  }
+
+  saveBackendConfigToLocal(normalizedConfig)
+  window.electronAPI?.setBackendConfig?.(normalizedConfig).catch((error) => {
+    console.warn('保存稳定后端配置失败:', error)
+  })
+}
+
+export async function saveBackendConfigPersistent(config: BackendConfig) {
+  const normalizedConfig = {
+    backendUrl: normalizeBackendUrl(config.backendUrl),
+    workspaceKey: config.workspaceKey.trim(),
+  }
+
+  saveBackendConfigToLocal(normalizedConfig)
+  await window.electronAPI?.setBackendConfig?.(normalizedConfig)
+}
+
 export function clearBackendConfig() {
   localStorage.removeItem(BACKEND_URL_KEY)
   localStorage.removeItem(WORKSPACE_KEY_KEY)
+  window.electronAPI?.clearBackendConfig?.().catch((error) => {
+    console.warn('清除稳定后端配置失败:', error)
+  })
   applyBackendConfig()
+}
+
+export async function loadBackendConfig() {
+  const localConfig = getBackendConfig()
+
+  if (localConfig) {
+    await window.electronAPI?.setBackendConfig?.(localConfig).catch((error) => {
+      console.warn('迁移后端配置失败:', error)
+    })
+    return localConfig
+  }
+
+  const persistedConfig = await window.electronAPI?.getBackendConfig?.()
+  if (persistedConfig?.backendUrl && persistedConfig.workspaceKey) {
+    const normalizedConfig = {
+      backendUrl: normalizeBackendUrl(persistedConfig.backendUrl),
+      workspaceKey: persistedConfig.workspaceKey.trim(),
+    }
+
+    saveBackendConfigToLocal(normalizedConfig)
+    return normalizedConfig
+  }
+
+  return null
 }
 
 function getApiBaseUrl() {

@@ -28,7 +28,7 @@ Backend:
 ```mermaid
 flowchart LR
   A["MacMima Desktop<br/>React UI"] --> B["Electron Main<br/>Local API"]
-  A --> C["Crypto Module<br/>AES-GCM / PBKDF2"]
+  A --> C["Crypto Module<br/>AES-256-GCM / PBKDF2 / Crypto v2"]
   A --> D["Backend API<br/>Express"]
   D --> E["Prisma ORM"]
   E --> F["MySQL"]
@@ -40,8 +40,8 @@ Boundaries:
 
 - React UI handles login, key derivation, encryption, decryption, and interaction.
 - Electron Main handles windows, system capabilities, and Local API.
-- Express handles accounts, permissions, sync, and ciphertext storage.
-- MySQL stores users, workspaces, invite codes, credential ciphertext, metadata, and history.
+- Express handles accounts, permissions, sync, discussion messages, and ciphertext storage.
+- MySQL stores users, workspaces, invite codes, credential ciphertext, Markdown document ciphertext, metadata, history, and workspace discussion messages.
 
 ## What Is In The Backend Database
 
@@ -51,7 +51,7 @@ No. The `credentials` table stores encrypted output and metadata.
 
 | Category | Examples | Plaintext visibility |
 | --- | --- | --- |
-| Credential body | Website passwords, database passwords, API keys, SSH private keys, connection strings, database table notes | Not stored plaintext. Encrypted before upload |
+| Credential body | Website passwords, database passwords, API keys, SSH private keys, connection strings, Markdown documents, database table notes | Not stored plaintext. Encrypted before upload |
 | Encrypted output | `encryptedData`, `iv`, `authTag` | Stored, but not directly usable |
 | Listing metadata | `title`, `category`, `tags`, `scope`, timestamps | Stored plaintext for UI listing and search |
 | Login material | User salt, Argon2id verifier | Does not contain plaintext master password and cannot decrypt Personal Vault data |
@@ -66,19 +66,28 @@ so do not put real secrets in titles or tags.
 
 1. The user enters the master password.
 2. The frontend derives an AES-GCM key with PBKDF2 and the user salt.
-3. Credential body is encrypted locally.
-4. The backend receives only `encryptedData`, `iv`, `authTag`, and metadata.
-5. On read, the frontend downloads ciphertext and decrypts locally.
+3. If Crypto v2 is enabled, a local enhancement secret is added to the encryption context.
+   This secret is stored only on the user's device and is not uploaded to the backend.
+4. Credential body is encrypted locally.
+5. The backend receives only `encryptedData`, `iv`, `authTag`, and metadata.
+6. On read, the frontend downloads ciphertext and decrypts locally.
 
 ### Shared Vault
 
-The current Shared Vault derives its key from the workspace key. This allows members of
-the same workspace to read shared credentials.
+Historical v1 shared records derive their encryption key from the workspace key for
+backward compatibility.
 
-Boundary: the workspace key is used for backend workspace isolation and current shared-key
-derivation. If the backend runtime is fully compromised, an attacker may capture the workspace
-key from request flow or misconfigured logs. Personal Vault encryption still depends on the
-user's master password, not on the workspace key.
+New Crypto v2 shared records use a separate Shared Vault encryption secret. Team members
+configure the same secret in personal settings. This secret is stored locally and is not sent
+as the `X-MacMima-Workspace-Key` request header. If only the backend database leaks, the attacker
+gets shared ciphertext and metadata, not the Shared Vault secret.
+
+Shared Vault boundaries:
+
+- If a team member pastes the Shared Vault secret into chat, logs, repositories, or backend
+  environment variables, that gives away shared decryption capability.
+- Old v1 shared records still inherit the workspace-key boundary. Edit and save old shared
+  credentials again to re-encrypt them with Crypto v2.
 
 Roadmap:
 
@@ -110,7 +119,7 @@ must use HTTPS and must not log request bodies.
 | `AUTH_PEPPER` and database leak | Login-verifier resistance is reduced; rotate pepper and force re-login |
 | User forgets master password | Backend cannot recover Personal Vault plaintext |
 | Malicious or modified client | Can read plaintext before encryption; this is a supply-chain risk for any client-side encryption tool |
-| Backend runtime fully compromised | Auth, sync, and Shared Vault safety may be affected; rotate workspace key, JWT, pepper, and database password |
+| Backend runtime fully compromised | Auth, sync, chat, and old v1 Shared Vault safety may be affected; rotate workspace key, JWT, pepper, database password, and Shared Vault secret |
 
 ## Database Models
 
@@ -119,9 +128,10 @@ must use HTTPS and must not log request bodies.
 | `Workspace` | `workspaces` | Workspace records isolated by workspace key hash |
 | `User` | `users` | User, admin status, Shared Vault permission |
 | `InviteCode` | `invite_codes` | Invite code and usage count |
-| `Credential` | `credentials` | Credential ciphertext, category, scope, tags |
+| `Credential` | `credentials` | Credential and Markdown document ciphertext, category, scope, tags |
 | `CredentialHistory` | `credential_history` | Credential ciphertext history |
 | `SyncLog` | `sync_logs` | Sync records |
+| `WorkspaceChatMessage` | `workspace_chat_messages` | Workspace discussion messages, image attachment metadata, and masking state |
 
 ## Backend API Modules
 
@@ -130,6 +140,7 @@ must use HTTPS and must not log request bodies.
 | Auth | `/api/auth` | Register, login, current user |
 | Credentials | `/api/credentials` | Credential CRUD |
 | Admin | `/api/admin` | User management, invite codes, Shared Vault permission |
+| Chat | `/api/chat` | Workspace discussion, member list, image attachments, paginated history |
 | Sync | `/api/sync` | Sync-related APIs |
 | Health | `/health` | Health check |
 
@@ -153,6 +164,9 @@ Endpoints:
 The Local API does not write plaintext directly to the database. It sends normalized payload
 to the frontend. The unlocked frontend encrypts it and then saves through the backend API.
 
+Use `category: "document"` to push Markdown documents. Use `scope: "shared"` to save a
+document into the Shared Vault.
+
 ## Source Layout
 
 ```text
@@ -163,7 +177,7 @@ electron/
 src/
   pages/        Main pages
   components/   Credential cards, forms, layout, Local API bridge
-  services/     Backend API client
+  services/     Backend API client, local crypto profile
   stores/       Zustand stores
   utils/        Crypto, clipboard, export helpers
 
@@ -172,6 +186,7 @@ server/
   src/routes/auth.ts        Register, login, JWT
   src/routes/admin.ts       Admin features
   src/routes/credentials.ts Credential API
+  src/routes/chat.ts        Workspace discussion
   prisma/schema.prisma      Data model
 ```
 
@@ -181,4 +196,5 @@ server/
 - Clean up ESLint issues and make lint a required CI gate.
 - Add end-to-end tests and backend API tests.
 - Strengthen Electron sandboxing and code-signing strategy.
-- Upgrade Shared Vault key distribution.
+- Upgrade Shared Vault key distribution to public-key-wrapped vault keys.
+- Add a retention and admin-audit policy for workspace discussion messages.

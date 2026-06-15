@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { FileText, Plus, Trash2, Upload, X, Save, Wand2 } from 'lucide-react'
 import PasswordGenerator from './PasswordGenerator'
 
+type CredentialCategory = 'server' | 'website' | 'api_key' | 'database' | 'document' | 'other'
+
 interface CredentialFormProps {
   mode: 'create' | 'edit'
   initialData?: any
-  category?: 'server' | 'website' | 'api_key' | 'database' | 'other'
+  category?: CredentialCategory
   onSave: (data: any) => void
   onCancel: () => void
 }
@@ -17,7 +19,9 @@ export default function CredentialForm({
   onSave,
   onCancel,
 }: CredentialFormProps) {
-  const [selectedCategory, setSelectedCategory] = useState(category)
+  const [selectedCategory, setSelectedCategory] = useState<CredentialCategory>(
+    initialData?.category || category
+  )
   const [scope, setScope] = useState<'personal' | 'shared'>(initialData?.scope || 'personal')
   const [title, setTitle] = useState(initialData?.title || '')
   const [tags, setTags] = useState<string[]>(initialData?.tags || [])
@@ -33,6 +37,11 @@ export default function CredentialForm({
 
     if (!title.trim()) {
       alert('请输入标题')
+      return
+    }
+
+    if (selectedCategory === 'document' && !String(formData.content || '').trim()) {
+      alert('请输入 Markdown 正文')
       return
     }
 
@@ -72,6 +81,26 @@ export default function CredentialForm({
     })
   }
 
+  const handleMarkdownFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+
+    if (!file) return
+
+    const maxDocumentFileSize = 1024 * 1024
+    if (file.size > maxDocumentFileSize) {
+      alert('Markdown 文件过大，请选择 1MB 以内的文档')
+      return
+    }
+
+    const content = await file.text()
+    updateFields({
+      content: content.trimEnd(),
+      sourceFileName: file.name,
+      format: 'markdown',
+    })
+  }
+
   const handleAddTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
       setTags([...tags, tagInput.trim()])
@@ -97,6 +126,21 @@ export default function CredentialForm({
   }
 
   const getNormalizedFormData = () => {
+    if (selectedCategory === 'document') {
+      const content = String(formData.content || '')
+      const description = String(formData.description || '').trim()
+      const sourceFileName = String(formData.sourceFileName || '').trim()
+      const notes = String(formData.notes || '').trim()
+
+      return {
+        format: 'markdown',
+        content,
+        ...(description ? { description } : {}),
+        ...(sourceFileName ? { sourceFileName } : {}),
+        ...(notes ? { notes } : {}),
+      }
+    }
+
     if (selectedCategory !== 'database') {
       return formData
     }
@@ -615,13 +659,78 @@ export default function CredentialForm({
     </>
   )
 
+  const renderDocumentFields = () => (
+    <>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-medium text-gray-700">文档说明</label>
+          <div className="flex items-center gap-2">
+            {formData.sourceFileName && (
+              <span className="inline-flex max-w-[220px] items-center gap-1 truncate text-xs text-gray-500">
+                <FileText size={14} />
+                {formData.sourceFileName}
+              </span>
+            )}
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary-50 px-3 py-1.5 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100">
+              <Upload size={16} />
+              导入 Markdown
+              <input
+                type="file"
+                accept=".md,.markdown,.txt"
+                onChange={handleMarkdownFile}
+                className="hidden"
+              />
+            </label>
+          </div>
+        </div>
+        <textarea
+          value={formData.description || ''}
+          onChange={(e) => updateField('description', e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          rows={2}
+          placeholder="例: OpenAI Responses API 请求示例、Webhook 对接说明"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Markdown 正文 *</label>
+        <textarea
+          value={formData.content || ''}
+          onChange={(e) => updateField('content', e.target.value)}
+          className="min-h-[360px] w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm leading-6 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          placeholder={
+            '# API 请求文档\n\n## Endpoint\nPOST /v1/example\n\n```json\n{\n  "name": "demo"\n}\n```'
+          }
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">备注</label>
+        <textarea
+          value={formData.notes || ''}
+          onChange={(e) => updateField('notes', e.target.value)}
+          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          rows={3}
+          placeholder="补充维护说明、适用环境或更新时间..."
+        />
+      </div>
+    </>
+  )
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* 头部 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-2xl font-semibold text-gray-900">
-            {mode === 'create' ? '创建凭证' : '编辑凭证'}
+            {selectedCategory === 'document'
+              ? mode === 'create'
+                ? '创建文档'
+                : '编辑文档'
+              : mode === 'create'
+                ? '创建凭证'
+                : '编辑凭证'}
           </h2>
           <button
             onClick={onCancel}
@@ -650,6 +759,7 @@ export default function CredentialForm({
                 <option value="website">网站</option>
                 <option value="api_key">API密钥</option>
                 <option value="database">数据库</option>
+                <option value="document">Markdown文档</option>
                 <option value="other">其他</option>
               </select>
             </div>
@@ -740,6 +850,7 @@ export default function CredentialForm({
             {selectedCategory === 'website' && renderWebsiteFields()}
             {selectedCategory === 'api_key' && renderApiKeyFields()}
             {selectedCategory === 'database' && renderDatabaseFields()}
+            {selectedCategory === 'document' && renderDocumentFields()}
           </div>
         </form>
 

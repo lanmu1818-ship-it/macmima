@@ -57,6 +57,8 @@ passwords, API keys, server addresses, or production records.
 - Personal Vault: store credentials that only the current user can decrypt.
 - Shared Vault: admins can grant shared-vault access to selected team members.
 - Database Notes: store database credentials together with table names and table descriptions.
+- Markdown Docs: store API docs, request examples, code snippets, and collaboration notes.
+- Developer Discussion: workspace members can discuss requirements, paste images, mention online users, and fold history by date.
 - Local API: allow trusted local tools to push credentials into the unlocked desktop app.
 - Workspace Key: isolate multiple teams or workspaces on one backend.
 - Admin Controls: manage users, invite codes, and shared-vault permissions.
@@ -72,15 +74,18 @@ The backend database does not store plaintext passwords, plaintext API keys, or 
 
 | Data | Stored plaintext in backend database? |
 | --- | --- |
-| Website passwords, database passwords, API keys, SSH private keys, connection strings, table notes | No. Encrypted locally with AES-GCM before upload |
+| Website passwords, database passwords, API keys, SSH private keys, connection strings, Markdown docs, table notes | No. Encrypted locally with AES-256-GCM before upload |
 | User master password | No. It is never sent to the backend |
 | Login verifier | Not a plaintext password. The backend stores an Argon2id verifier with `AUTH_PEPPER` |
 | Credential title, category, tags, timestamps | Yes. These are metadata used for listing and search. Do not put secrets in titles or tags |
 | Ciphertext, IV, auth tag | Yes. These encrypted values are stored for sync |
 
-The Personal Vault uses a key derived from the user's master password. The Shared Vault
-currently uses a key derived from the workspace key. See [Security Model](./docs/en/SECURITY.md)
-for threat boundaries, breach scenarios, and the hardening roadmap.
+The Personal Vault uses a key derived from the user's master password. MacMima Crypto v2
+can add a local enhancement secret that is stored only on the user's device and is not sent
+to the backend. The Shared Vault can use a separate Shared Vault encryption secret, so new
+shared records do not need to rely on the workspace access key for decryption. Legacy shared
+records remain readable through the v1 compatibility path. See [Security Model](./docs/en/SECURITY.md)
+for threat boundaries and breach scenarios.
 
 ## Quick Start
 

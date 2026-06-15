@@ -1,10 +1,24 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import { Database, Globe, KeyRound, ListFilter, Plus, Search, Server } from 'lucide-react'
+import {
+  Database,
+  FileText,
+  Globe,
+  KeyRound,
+  ListFilter,
+  Plus,
+  Search,
+  Server,
+} from 'lucide-react'
 import { useCredentialStore } from '@/stores/credentialStore'
 import { useAuthStore } from '@/stores/authStore'
 import { api, getBackendConfig } from '@/services/api'
-import { decryptData, deriveWorkspaceSharedKey, encryptData } from '@/utils/crypto'
+import {
+  decryptCredentialData,
+  deriveWorkspaceSharedKey,
+  encryptCredentialData,
+} from '@/utils/crypto'
+import { getOrCreateCryptoProfile, loadCryptoProfile } from '@/services/cryptoProfile'
 import CredentialCard from '@/components/CredentialCard'
 import CredentialDetail from '@/components/CredentialDetail'
 import CredentialForm from '@/components/CredentialForm'
@@ -18,7 +32,7 @@ interface ApiCredential {
   id: string
   userId: string
   scope?: 'personal' | 'shared'
-  category: 'server' | 'website' | 'api_key' | 'database' | 'other'
+  category: 'server' | 'website' | 'api_key' | 'database' | 'document' | 'other'
   title: string
   encryptedData: string
   iv: string
@@ -43,6 +57,7 @@ const categoryOptions: Array<{
   { value: 'website', label: '网站', icon: Globe },
   { value: 'api_key', label: 'API', icon: KeyRound },
   { value: 'database', label: '数据库', icon: Database },
+  { value: 'document', label: '文档', icon: FileText },
   { value: 'other', label: '其他', icon: KeyRound },
 ]
 
@@ -84,6 +99,7 @@ export default function CredentialsPage({ filter }: CredentialsPageProps) {
     if (category === 'website') return '网站'
     if (category === 'api_key') return 'API密钥'
     if (category === 'database') return '数据库'
+    if (category === 'document') return '文档库'
     return '所有项目'
   }
 
@@ -127,20 +143,25 @@ export default function CredentialsPage({ filter }: CredentialsPageProps) {
         const payload = unwrapResponseData<{
           credentials: ApiCredential[]
         }>(response)
+        const cryptoProfile = await loadCryptoProfile()
         const hasSharedCredentials = payload.credentials.some((item) => item.scope === 'shared')
         const sharedKey = hasSharedCredentials ? await getSharedKey() : null
 
         const decryptedCredentials = await Promise.all(
           payload.credentials.map(async (item) => {
             const credentialScope = item.scope || 'personal'
-            const decryptKey = credentialScope === 'shared' ? sharedKey! : masterKey
-            const decryptedJson = await decryptData(
+            const decryptedJson = await decryptCredentialData(
               {
                 encrypted: item.encryptedData,
                 iv: item.iv,
                 authTag: item.authTag,
               },
-              decryptKey
+              {
+                scope: credentialScope,
+                personalKey: masterKey,
+                sharedLegacyKey: sharedKey,
+                cryptoProfile,
+              }
             )
 
             return {
@@ -187,7 +208,9 @@ export default function CredentialsPage({ filter }: CredentialsPageProps) {
       const query = searchQuery.toLowerCase()
       return (
         cred.title.toLowerCase().includes(query) ||
-        cred.tags?.some((tag) => tag.toLowerCase().includes(query))
+        cred.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
+        String(cred.data?.description || '').toLowerCase().includes(query) ||
+        String(cred.data?.content || '').toLowerCase().includes(query)
       )
     }
 
@@ -217,8 +240,14 @@ export default function CredentialsPage({ filter }: CredentialsPageProps) {
 
     try {
       const credentialScope = data.scope === 'shared' ? 'shared' : 'personal'
-      const encryptionKey = await getEncryptionKey(credentialScope)
-      const encrypted = await encryptData(JSON.stringify(data.data), encryptionKey)
+      const cryptoProfile = await getOrCreateCryptoProfile()
+      const encrypted = await encryptCredentialData(JSON.stringify(data.data), {
+        scope: credentialScope,
+        personalKey: masterKey,
+        sharedLegacyKey:
+          credentialScope === 'shared' ? await getEncryptionKey('shared') : null,
+        cryptoProfile,
+      })
 
       if (editMode && selectedCredential) {
         const response = await api.put(`/credentials/${selectedCredential.id}`, {
@@ -419,7 +448,7 @@ export default function CredentialsPage({ filter }: CredentialsPageProps) {
         <CredentialForm
           mode={editMode ? 'edit' : 'create'}
           initialData={selectedCredential}
-          category={category as any}
+          category={effectiveCategory === 'all' ? undefined : effectiveCategory}
           onSave={handleSave}
           onCancel={() => {
             setShowForm(false)

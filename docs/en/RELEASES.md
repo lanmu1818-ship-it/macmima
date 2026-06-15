@@ -67,7 +67,7 @@ If the project maintainer uses the website admin console to publish installers:
 1. Open the website admin console.
 2. Select `Windows` as the platform.
 3. Upload `MacMima-<version>-Setup-x64.exe`.
-4. Set the matching version, for example `1.0.0`.
+4. Set the matching version, for example `1.0.1`.
 5. After publishing, confirm the website's Windows download filename ends with `.exe`.
 
 The website can present different instructions based on the file extension:
@@ -86,3 +86,14 @@ Before publishing, verify:
 - First launch still asks the user to configure backend URL and workspace key.
 - No `.env`, private keys, deployment logs, database backups, or real user data are
   included in the installer.
+
+## v1.0.1 Highlights
+
+- Added the Markdown document category for API docs, request examples, and code blocks,
+  including Shared Vault support.
+- Added Developer Discussion with images, `@` mentions for online members, notifications,
+  date folding, and paginated history loading.
+- Added Crypto v2: Personal Vault local enhancement secret and separate Shared Vault secret.
+- Improved copy output so Markdown documents copy less metadata noise.
+- Updated the website and open-source docs with clearer ciphertext-only backend storage,
+  metadata boundaries, and self-hosting notes.

@@ -5,6 +5,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 应用控制
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+  getLatestRelease: () => ipcRenderer.invoke('app:getLatestRelease'),
+  openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
+  getBackendConfig: () => ipcRenderer.invoke('backend-config:get'),
+  setBackendConfig: (config: BackendConfig) => ipcRenderer.invoke('backend-config:set', config),
+  clearBackendConfig: () => ipcRenderer.invoke('backend-config:clear'),
+  getCryptoProfile: () => ipcRenderer.invoke('crypto-profile:get'),
+  setCryptoProfile: (config: CryptoProfileConfig) => ipcRenderer.invoke('crypto-profile:set', config),
+  generateCryptoSecret: () => ipcRenderer.invoke('crypto-profile:generate-secret'),
   minimize: () => ipcRenderer.send('app:minimize'),
   maximize: () => ipcRenderer.send('app:maximize'),
   close: () => ipcRenderer.send('app:close'),
@@ -46,10 +54,23 @@ export interface LocalApiConfig {
   lastError: string | null
 }
 
+export interface BackendConfig {
+  backendUrl: string
+  workspaceKey: string
+}
+
+export interface CryptoProfileConfig {
+  enabled: boolean
+  kdfIterations: number
+  localSecret: string
+  sharedVaultSecret: string
+  updatedAt?: string
+}
+
 export interface LocalApiCredentialRequest {
   requestId: string
   payload: {
-    category: 'server' | 'website' | 'api_key' | 'database' | 'other'
+    category: 'server' | 'website' | 'api_key' | 'database' | 'document' | 'other'
     scope: 'personal' | 'shared'
     title: string
     tags: string[]
@@ -72,6 +93,14 @@ export interface LocalApiCredentialResult {
 export interface ElectronAPI {
   getVersion: () => Promise<string>
   getPlatform: () => Promise<string>
+  getLatestRelease: () => Promise<ReleaseManifest>
+  openExternal: (url: string) => Promise<void>
+  getBackendConfig: () => Promise<BackendConfig | null>
+  setBackendConfig: (config: BackendConfig) => Promise<BackendConfig>
+  clearBackendConfig: () => Promise<boolean>
+  getCryptoProfile: () => Promise<CryptoProfileConfig>
+  setCryptoProfile: (config: CryptoProfileConfig) => Promise<CryptoProfileConfig>
+  generateCryptoSecret: () => Promise<string>
   minimize: () => void
   maximize: () => void
   close: () => void
@@ -88,4 +117,22 @@ declare global {
   interface Window {
     electronAPI: ElectronAPI
   }
+}
+
+export interface ReleaseManifest {
+  updatedAt: string
+  releases: Array<{
+    id: string
+    platform: 'macos' | 'windows'
+    arch: string
+    version: string
+    filename: string
+    size: number
+    sha256: string
+    downloadUrl: string
+    notes?: string
+    active: boolean
+    createdAt: string
+    updatedAt: string
+  }>
 }

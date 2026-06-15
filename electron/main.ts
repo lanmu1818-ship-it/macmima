@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut, safeStorage, shell } from 'electron'
 import { createServer } from 'http'
 import type { IncomingMessage, Server, ServerResponse } from 'http'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
@@ -8,6 +8,9 @@ import path from 'path'
 const isDev = process.env.NODE_ENV === 'development'
 const DEFAULT_LOCAL_API_PORT = 37621
 const LOCAL_API_CONFIG_FILE = 'local-api.json'
+const APP_CONFIG_FILE = 'app-config.json'
+const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
+const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
 
 let mainWindow: BrowserWindow | null = null
 let localApiServer: Server | null = null
@@ -30,6 +33,19 @@ interface PendingLocalApiRequest {
   timeout: NodeJS.Timeout
 }
 
+interface BackendConfig {
+  backendUrl: string
+  workspaceKey: string
+}
+
+interface CryptoProfileConfig {
+  enabled: boolean
+  kdfIterations: number
+  localSecret: string
+  sharedVaultSecret: string
+  updatedAt?: string
+}
+
 const pendingLocalApiRequests = new Map<string, PendingLocalApiRequest>()
 let localApiConfig: LocalApiConfig = {
   enabled: false,
@@ -39,6 +55,139 @@ let localApiConfig: LocalApiConfig = {
 
 function getLocalApiConfigPath() {
   return path.join(app.getPath('userData'), LOCAL_API_CONFIG_FILE)
+}
+
+function getAppConfigPath() {
+  return path.join(app.getPath('userData'), APP_CONFIG_FILE)
+}
+
+function getCryptoProfilePath() {
+  return path.join(app.getPath('userData'), CRYPTO_PROFILE_FILE)
+}
+
+function protectLocalSecret(value: unknown) {
+  const secret = typeof value === 'string' ? value.trim() : ''
+  if (!secret) return ''
+
+  if (safeStorage.isEncryptionAvailable()) {
+    return `safe:${safeStorage.encryptString(secret).toString('base64')}`
+  }
+
+  return `plain:${Buffer.from(secret, 'utf8').toString('base64')}`
+}
+
+function unprotectLocalSecret(value: unknown) {
+  const secret = typeof value === 'string' ? value.trim() : ''
+  if (!secret) return ''
+
+  try {
+    if (secret.startsWith('safe:')) {
+      return safeStorage.decryptString(Buffer.from(secret.slice(5), 'base64'))
+    }
+
+    if (secret.startsWith('plain:')) {
+      return Buffer.from(secret.slice(6), 'base64').toString('utf8')
+    }
+  } catch (error) {
+    console.error('解密本地加密配置失败:', error)
+    return ''
+  }
+
+  return secret
+}
+
+function normalizeCryptoProfile(config?: Partial<CryptoProfileConfig> | null): CryptoProfileConfig {
+  const iterations = Number(config?.kdfIterations)
+
+  return {
+    enabled: !config || config.enabled !== false,
+    kdfIterations:
+      Number.isFinite(iterations) && iterations >= 100000 && iterations <= 1000000
+        ? Math.round(iterations)
+        : 210000,
+    localSecret: typeof config?.localSecret === 'string' ? config.localSecret.trim() : '',
+    sharedVaultSecret:
+      typeof config?.sharedVaultSecret === 'string' ? config.sharedVaultSecret.trim() : '',
+    updatedAt: typeof config?.updatedAt === 'string' ? config.updatedAt : undefined,
+  }
+}
+
+function loadCryptoProfile(): CryptoProfileConfig {
+  const configPath = getCryptoProfilePath()
+  if (!existsSync(configPath)) return normalizeCryptoProfile()
+
+  try {
+    const rawProfile = JSON.parse(readFileSync(configPath, 'utf8'))
+    return normalizeCryptoProfile({
+      ...rawProfile,
+      localSecret: unprotectLocalSecret(rawProfile.localSecret),
+      sharedVaultSecret: unprotectLocalSecret(rawProfile.sharedVaultSecret),
+    })
+  } catch (error) {
+    console.error('读取本地加密配置失败:', error)
+    return normalizeCryptoProfile()
+  }
+}
+
+function saveCryptoProfile(config: Partial<CryptoProfileConfig>) {
+  const normalizedProfile = normalizeCryptoProfile({
+    ...config,
+    updatedAt: new Date().toISOString(),
+  })
+
+  writeFileSync(
+    getCryptoProfilePath(),
+    JSON.stringify(
+      {
+        ...normalizedProfile,
+        localSecret: protectLocalSecret(normalizedProfile.localSecret),
+        sharedVaultSecret: protectLocalSecret(normalizedProfile.sharedVaultSecret),
+      },
+      null,
+      2
+    ),
+    { mode: 0o600 }
+  )
+
+  return normalizedProfile
+}
+
+function normalizeBackendConfig(config?: Partial<BackendConfig> | null): BackendConfig | null {
+  const backendUrl = typeof config?.backendUrl === 'string' ? config.backendUrl.trim() : ''
+  const workspaceKey = typeof config?.workspaceKey === 'string' ? config.workspaceKey.trim() : ''
+
+  if (!backendUrl || !workspaceKey) return null
+  return { backendUrl, workspaceKey }
+}
+
+function loadBackendConfig(): BackendConfig | null {
+  const configPath = getAppConfigPath()
+  if (!existsSync(configPath)) return null
+
+  try {
+    return normalizeBackendConfig(JSON.parse(readFileSync(configPath, 'utf8')))
+  } catch (error) {
+    console.error('读取应用配置失败:', error)
+    return null
+  }
+}
+
+function saveBackendConfig(config: BackendConfig) {
+  const normalizedConfig = normalizeBackendConfig(config)
+  if (!normalizedConfig) {
+    throw new Error('后端地址和工作区 Key 不能为空')
+  }
+
+  writeFileSync(getAppConfigPath(), JSON.stringify(normalizedConfig, null, 2), {
+    mode: 0o600,
+  })
+  return normalizedConfig
+}
+
+function clearBackendConfig() {
+  writeFileSync(getAppConfigPath(), JSON.stringify({}, null, 2), {
+    mode: 0o600,
+  })
 }
 
 function normalizeLocalApiConfig(config?: Partial<LocalApiConfig> | null): LocalApiConfig {
@@ -82,6 +231,10 @@ function getLocalApiStatus(config = localApiConfig): LocalApiStatus {
 }
 
 function generateLocalApiKey() {
+  return randomBytes(32).toString('hex')
+}
+
+function generateCryptoSecret() {
   return randomBytes(32).toString('hex')
 }
 
@@ -173,10 +326,12 @@ function normalizeDatabaseTables(value: unknown) {
 function inferCredentialCategory(input: Record<string, any>, data: Record<string, any>) {
   const category = normalizeString(input.category || input.kind)
   const type = normalizeString(input.type)
-  const allowed = ['server', 'website', 'api_key', 'database', 'other']
+  const format = normalizeString(input.format || data.format)
+  const allowed = ['server', 'website', 'api_key', 'database', 'document', 'other']
 
   if (allowed.includes(category)) return category
   if (allowed.includes(type)) return type
+  if (format === 'markdown' || data.content || input.markdown || input.document) return 'document'
   if (data.database || data.connectionString || input.tables || input.databaseTables) return 'database'
   if (data.url) return 'website'
   if (data.apiKey || data.apiSecret || data.accessKeyId || data.accessKeySecret) return 'api_key'
@@ -211,6 +366,10 @@ function normalizeCredentialPayload(input: Record<string, any>) {
     'endpoint',
     'quota',
     'expiresAt',
+    'description',
+    'content',
+    'markdown',
+    'sourceFileName',
   ]
 
   copyFields.forEach((field) => {
@@ -220,6 +379,14 @@ function normalizeCredentialPayload(input: Record<string, any>) {
   })
 
   const category = inferCredentialCategory(input, data)
+  if (category === 'document') {
+    data.format = 'markdown'
+    data.content = String(data.content || data.markdown || input.markdown || input.document || '')
+    data.description = normalizeString(data.description || input.description)
+    data.sourceFileName = normalizeString(data.sourceFileName || input.sourceFileName || input.fileName)
+    delete data.markdown
+  }
+
   if (category === 'database') {
     const databaseType = normalizeString(input.databaseType || input.dbType)
     const inputType = normalizeString(input.type)
@@ -448,6 +615,51 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getPlatform', () => {
   return process.platform
+})
+
+ipcMain.handle('app:getLatestRelease', async () => {
+  const response = await fetch(RELEASES_URL, {
+    headers: { Accept: 'application/json' },
+  })
+
+  if (!response.ok) {
+    throw new Error(`检查更新失败: ${response.status}`)
+  }
+
+  return response.json()
+})
+
+ipcMain.handle('app:openExternal', async (_event, url: string) => {
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('只允许打开 http/https 链接')
+  }
+
+  await shell.openExternal(url)
+})
+
+ipcMain.handle('backend-config:get', () => {
+  return loadBackendConfig()
+})
+
+ipcMain.handle('backend-config:set', (_event, config: BackendConfig) => {
+  return saveBackendConfig(config)
+})
+
+ipcMain.handle('backend-config:clear', () => {
+  clearBackendConfig()
+  return true
+})
+
+ipcMain.handle('crypto-profile:get', () => {
+  return loadCryptoProfile()
+})
+
+ipcMain.handle('crypto-profile:set', (_event, config: CryptoProfileConfig) => {
+  return saveCryptoProfile(config)
+})
+
+ipcMain.handle('crypto-profile:generate-secret', () => {
+  return generateCryptoSecret()
 })
 
 ipcMain.handle('local-api:get-config', () => {

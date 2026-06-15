@@ -9,6 +9,28 @@ import { authenticateToken, AuthRequest } from '../middleware/auth'
 
 const router = Router()
 const prisma = new PrismaClient()
+const maxAvatarBytes = 256 * 1024
+
+function normalizeDisplayName(value: unknown) {
+  return String(value || '').trim().slice(0, 60)
+}
+
+function normalizeAvatarDataUrl(value: unknown) {
+  const avatarDataUrl = String(value || '').trim()
+  if (!avatarDataUrl) return null
+
+  const match = avatarDataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/)
+  if (!match) {
+    throw new Error('头像仅支持 PNG、JPG 或 WebP 图片')
+  }
+
+  const size = Buffer.byteLength(match[2], 'base64')
+  if (size <= 0 || size > maxAvatarBytes) {
+    throw new Error('头像不能超过 256KB')
+  }
+
+  return avatarDataUrl
+}
 
 function numberFromEnv(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -177,6 +199,8 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
         id: true,
         username: true,
         email: true,
+        displayName: true,
+        avatarDataUrl: true,
         salt: true,
         isAdmin: true,
         sharedAccess: true,
@@ -195,6 +219,8 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
           id: user.id,
           username: user.username,
           email: user.email,
+          displayName: user.displayName,
+          avatarDataUrl: user.avatarDataUrl,
           salt: user.salt,
           isAdmin: user.isAdmin,
           sharedAccess: user.sharedAccess,
@@ -206,6 +232,65 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
     res.status(500).json({ error: '获取当前用户失败' })
   }
 })
+
+router.patch(
+  '/profile',
+  authenticateToken,
+  [
+    body('displayName').optional({ values: 'falsy' }).isLength({ max: 60 }).trim(),
+    body('avatarDataUrl').optional({ nullable: true }).isString(),
+  ],
+  async (req: AuthRequest, res) => {
+    if (!req.userId) {
+      return res.status(401).json({ error: '未提供认证令牌' })
+    }
+
+    const errors = validationResult(req)
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() })
+    }
+
+    try {
+      let avatarDataUrl: string | null | undefined
+
+      if (Object.prototype.hasOwnProperty.call(req.body, 'avatarDataUrl')) {
+        try {
+          avatarDataUrl = normalizeAvatarDataUrl(req.body.avatarDataUrl)
+        } catch (error: any) {
+          return res.status(400).json({ error: error.message || '头像格式不正确' })
+        }
+      }
+
+      const user = await prisma.user.update({
+        where: { id: req.userId },
+        data: {
+          displayName: normalizeDisplayName(req.body.displayName),
+          ...(avatarDataUrl !== undefined ? { avatarDataUrl } : {}),
+        },
+        select: {
+          id: true,
+          username: true,
+          email: true,
+          displayName: true,
+          avatarDataUrl: true,
+          salt: true,
+          isAdmin: true,
+          sharedAccess: true,
+        },
+      })
+
+      res.json({
+        success: true,
+        data: {
+          user,
+        },
+      })
+    } catch (error) {
+      console.error('更新个人资料失败:', error)
+      res.status(500).json({ error: '更新个人资料失败' })
+    }
+  }
+)
 
 // 注册
 router.post(
@@ -345,6 +430,8 @@ router.post(
             id: user.id,
             username: user.username,
             email: user.email,
+            displayName: user.displayName,
+            avatarDataUrl: user.avatarDataUrl,
             salt: user.salt,
             isAdmin: user.isAdmin,
             sharedAccess: user.sharedAccess,
@@ -436,6 +523,8 @@ router.post(
             id: user.id,
             username: updatedUser.username,
             email: updatedUser.email,
+            displayName: updatedUser.displayName,
+            avatarDataUrl: updatedUser.avatarDataUrl,
             salt: updatedUser.salt,
             isAdmin: updatedUser.isAdmin,
             sharedAccess: updatedUser.sharedAccess,

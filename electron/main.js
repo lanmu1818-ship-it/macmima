@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron')
+const { app, BrowserWindow, ipcMain, globalShortcut, safeStorage, shell } = require('electron')
 const { createServer } = require('http')
 const { existsSync, readFileSync, writeFileSync } = require('fs')
 const { randomBytes, randomUUID, timingSafeEqual } = require('crypto')
@@ -7,6 +7,9 @@ const path = require('path')
 const isDev = process.env.NODE_ENV === 'development'
 const DEFAULT_LOCAL_API_PORT = 37621
 const LOCAL_API_CONFIG_FILE = 'local-api.json'
+const APP_CONFIG_FILE = 'app-config.json'
+const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
+const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
 
 let mainWindow = null
 let localApiServer = null
@@ -20,6 +23,146 @@ let localApiConfig = {
 
 function getLocalApiConfigPath() {
   return path.join(app.getPath('userData'), LOCAL_API_CONFIG_FILE)
+}
+
+function getAppConfigPath() {
+  return path.join(app.getPath('userData'), APP_CONFIG_FILE)
+}
+
+function getCryptoProfilePath() {
+  return path.join(app.getPath('userData'), CRYPTO_PROFILE_FILE)
+}
+
+function protectLocalSecret(value) {
+  const secret = typeof value === 'string' ? value.trim() : ''
+  if (!secret) return ''
+
+  if (safeStorage.isEncryptionAvailable()) {
+    return `safe:${safeStorage.encryptString(secret).toString('base64')}`
+  }
+
+  return `plain:${Buffer.from(secret, 'utf8').toString('base64')}`
+}
+
+function unprotectLocalSecret(value) {
+  const secret = typeof value === 'string' ? value.trim() : ''
+  if (!secret) return ''
+
+  try {
+    if (secret.startsWith('safe:')) {
+      return safeStorage.decryptString(Buffer.from(secret.slice(5), 'base64'))
+    }
+
+    if (secret.startsWith('plain:')) {
+      return Buffer.from(secret.slice(6), 'base64').toString('utf8')
+    }
+  } catch (error) {
+    console.error('解密本地加密配置失败:', error)
+    return ''
+  }
+
+  return secret
+}
+
+function normalizeCryptoProfile(config = null) {
+  const iterations = Number(config && config.kdfIterations)
+
+  return {
+    enabled: !config || config.enabled !== false,
+    kdfIterations:
+      Number.isFinite(iterations) && iterations >= 100000 && iterations <= 1000000
+        ? Math.round(iterations)
+        : 210000,
+    localSecret: typeof (config && config.localSecret) === 'string'
+      ? config.localSecret.trim()
+      : '',
+    sharedVaultSecret: typeof (config && config.sharedVaultSecret) === 'string'
+      ? config.sharedVaultSecret.trim()
+      : '',
+    updatedAt: typeof (config && config.updatedAt) === 'string' ? config.updatedAt : undefined,
+  }
+}
+
+function loadCryptoProfile() {
+  const configPath = getCryptoProfilePath()
+  if (!existsSync(configPath)) return normalizeCryptoProfile()
+
+  try {
+    const rawProfile = JSON.parse(readFileSync(configPath, 'utf8'))
+    return normalizeCryptoProfile({
+      ...rawProfile,
+      localSecret: unprotectLocalSecret(rawProfile.localSecret),
+      sharedVaultSecret: unprotectLocalSecret(rawProfile.sharedVaultSecret),
+    })
+  } catch (error) {
+    console.error('读取本地加密配置失败:', error)
+    return normalizeCryptoProfile()
+  }
+}
+
+function saveCryptoProfile(config) {
+  const normalizedProfile = normalizeCryptoProfile({
+    ...config,
+    updatedAt: new Date().toISOString(),
+  })
+
+  writeFileSync(
+    getCryptoProfilePath(),
+    JSON.stringify(
+      {
+        ...normalizedProfile,
+        localSecret: protectLocalSecret(normalizedProfile.localSecret),
+        sharedVaultSecret: protectLocalSecret(normalizedProfile.sharedVaultSecret),
+      },
+      null,
+      2
+    ),
+    { mode: 0o600 }
+  )
+
+  return normalizedProfile
+}
+
+function normalizeBackendConfig(config = null) {
+  const backendUrl = typeof (config && config.backendUrl) === 'string'
+    ? config.backendUrl.trim()
+    : ''
+  const workspaceKey = typeof (config && config.workspaceKey) === 'string'
+    ? config.workspaceKey.trim()
+    : ''
+
+  if (!backendUrl || !workspaceKey) return null
+  return { backendUrl, workspaceKey }
+}
+
+function loadBackendConfig() {
+  const configPath = getAppConfigPath()
+  if (!existsSync(configPath)) return null
+
+  try {
+    return normalizeBackendConfig(JSON.parse(readFileSync(configPath, 'utf8')))
+  } catch (error) {
+    console.error('读取应用配置失败:', error)
+    return null
+  }
+}
+
+function saveBackendConfig(config) {
+  const normalizedConfig = normalizeBackendConfig(config)
+  if (!normalizedConfig) {
+    throw new Error('后端地址和工作区 Key 不能为空')
+  }
+
+  writeFileSync(getAppConfigPath(), JSON.stringify(normalizedConfig, null, 2), {
+    mode: 0o600,
+  })
+  return normalizedConfig
+}
+
+function clearBackendConfig() {
+  writeFileSync(getAppConfigPath(), JSON.stringify({}, null, 2), {
+    mode: 0o600,
+  })
 }
 
 function normalizeLocalApiConfig(config = null) {
@@ -64,6 +207,10 @@ function getLocalApiStatus(config = localApiConfig) {
 }
 
 function generateLocalApiKey() {
+  return randomBytes(32).toString('hex')
+}
+
+function generateCryptoSecret() {
   return randomBytes(32).toString('hex')
 }
 
@@ -153,10 +300,12 @@ function normalizeDatabaseTables(value) {
 function inferCredentialCategory(input, data) {
   const category = normalizeString(input.category || input.kind)
   const type = normalizeString(input.type)
-  const allowed = ['server', 'website', 'api_key', 'database', 'other']
+  const format = normalizeString(input.format || data.format)
+  const allowed = ['server', 'website', 'api_key', 'database', 'document', 'other']
 
   if (allowed.includes(category)) return category
   if (allowed.includes(type)) return type
+  if (format === 'markdown' || data.content || input.markdown || input.document) return 'document'
   if (data.database || data.connectionString || input.tables || input.databaseTables) return 'database'
   if (data.url) return 'website'
   if (data.apiKey || data.apiSecret || data.accessKeyId || data.accessKeySecret) return 'api_key'
@@ -191,6 +340,10 @@ function normalizeCredentialPayload(input) {
     'endpoint',
     'quota',
     'expiresAt',
+    'description',
+    'content',
+    'markdown',
+    'sourceFileName',
   ]
 
   copyFields.forEach((field) => {
@@ -200,6 +353,14 @@ function normalizeCredentialPayload(input) {
   })
 
   const category = inferCredentialCategory(input, data)
+  if (category === 'document') {
+    data.format = 'markdown'
+    data.content = String(data.content || data.markdown || input.markdown || input.document || '')
+    data.description = normalizeString(data.description || input.description)
+    data.sourceFileName = normalizeString(data.sourceFileName || input.sourceFileName || input.fileName)
+    delete data.markdown
+  }
+
   if (category === 'database') {
     const databaseType = normalizeString(input.databaseType || input.dbType)
     const inputType = normalizeString(input.type)
@@ -421,6 +582,51 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getPlatform', () => {
   return process.platform
+})
+
+ipcMain.handle('app:getLatestRelease', async () => {
+  const response = await fetch(RELEASES_URL, {
+    headers: { Accept: 'application/json' },
+  })
+
+  if (!response.ok) {
+    throw new Error(`检查更新失败: ${response.status}`)
+  }
+
+  return response.json()
+})
+
+ipcMain.handle('app:openExternal', async (_event, url) => {
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error('只允许打开 http/https 链接')
+  }
+
+  await shell.openExternal(url)
+})
+
+ipcMain.handle('backend-config:get', () => {
+  return loadBackendConfig()
+})
+
+ipcMain.handle('backend-config:set', (_event, config) => {
+  return saveBackendConfig(config)
+})
+
+ipcMain.handle('backend-config:clear', () => {
+  clearBackendConfig()
+  return true
+})
+
+ipcMain.handle('crypto-profile:get', () => {
+  return loadCryptoProfile()
+})
+
+ipcMain.handle('crypto-profile:set', (_event, config) => {
+  return saveCryptoProfile(config)
+})
+
+ipcMain.handle('crypto-profile:generate-secret', () => {
+  return generateCryptoSecret()
 })
 
 ipcMain.handle('local-api:get-config', () => {

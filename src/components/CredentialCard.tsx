@@ -4,6 +4,7 @@ import {
   Globe,
   Key,
   Database,
+  FileText,
   Star,
   Copy,
   Edit,
@@ -52,6 +53,8 @@ export default function CredentialCard({
         return <Key size={20} className="text-gray-700" />
       case 'database':
         return <Database size={20} className="text-primary-600" />
+      case 'document':
+        return <FileText size={20} className="text-gray-700" />
       default:
         return <Key size={20} className="text-gray-600" />
     }
@@ -67,6 +70,8 @@ export default function CredentialCard({
         return 'API密钥'
       case 'database':
         return '数据库'
+      case 'document':
+        return 'Markdown文档'
       default:
         return '其他'
     }
@@ -74,6 +79,10 @@ export default function CredentialCard({
 
   const getScopeLabel = () => (credential.scope === 'shared' ? '共享密区' : '个人密区')
   const ScopeIcon = credential.scope === 'shared' ? UsersRound : UserRound
+  const documentSummary =
+    credential.category === 'document'
+      ? String(credential.data?.description || credential.data?.content || '').trim()
+      : ''
 
   const handleCopy = async (text: string, field: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -196,6 +205,12 @@ export default function CredentialCard({
         </div>
       </div>
 
+      {documentSummary && (
+        <p className="mb-3 max-h-10 overflow-hidden text-sm leading-5 text-gray-600">
+          {documentSummary}
+        </p>
+      )}
+
       {/* 标签 */}
       {credential.tags && credential.tags.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3">
@@ -227,8 +242,8 @@ export default function CredentialCard({
           <button
             onClick={handleCopyAll}
             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-            title="复制全部信息"
-            aria-label="复制全部信息"
+            title={credential.category === 'document' ? '复制 Markdown 正文' : '复制全部信息'}
+            aria-label={credential.category === 'document' ? '复制 Markdown 正文' : '复制全部信息'}
           >
             {copiedField === 'all' ? <Check size={16} /> : <Copy size={16} />}
           </button>

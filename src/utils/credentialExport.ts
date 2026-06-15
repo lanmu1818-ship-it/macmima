@@ -8,9 +8,12 @@ const fieldLabels: Record<string, string> = {
   connectionString: '连接字符串',
   database: '数据库名',
   databaseTables: '数据表说明',
+  description: '说明',
   email: '邮箱',
   endpoint: '端点URL',
   expiresAt: '过期时间',
+  content: 'Markdown正文',
+  format: '格式',
   host: '主机地址',
   notes: '备注',
   password: '密码',
@@ -21,6 +24,7 @@ const fieldLabels: Record<string, string> = {
   quota: '配额',
   region: '区域',
   service: '服务名称',
+  sourceFileName: '源文件',
   type: '数据库类型',
   url: '网址',
   username: '用户名',
@@ -52,6 +56,7 @@ const fieldOrder: Record<Credential['category'], string[]> = {
     'databaseTables',
     'notes',
   ],
+  document: ['description', 'sourceFileName', 'content', 'notes'],
   other: [],
 }
 
@@ -88,6 +93,11 @@ function appendDatabaseTables(lines: string[], value: unknown) {
 export function formatCredentialInfo(credential: Credential): string {
   const lines: string[] = []
   const data = credential.data || {}
+
+  if (credential.category === 'document') {
+    return String(data.content || '').trim()
+  }
+
   const orderedFields = fieldOrder[credential.category] || []
   const usedFields = new Set<string>()
 

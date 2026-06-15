@@ -38,21 +38,45 @@ The Personal Vault uses a key derived from the user's master password:
 The master password is not sent to the backend. If the user forgets the master password,
 the backend cannot recover Personal Vault plaintext.
 
+### Crypto v2 Local Enhancement Secret
+
+MacMima Crypto v2 keeps old data compatible while adding a local enhancement secret for
+new or edited Personal Vault records:
+
+- The local enhancement secret is stored only on the desktop device and is not sent to the backend.
+- Electron builds prefer the operating system backed `safeStorage` API for local configuration.
+- New v2 Personal Vault ciphertext needs both the master-password-derived key and the local enhancement secret.
+- If only the backend database leaks, the attacker is still missing this local-only material.
+- When moving to another computer, the user must back up or import the local enhancement secret.
+  If it is lost, data encrypted with it cannot be recovered.
+
+Legacy v1 records remain readable. No database migration is required.
+
 ## Shared Vault Protection
 
-The current Shared Vault derives its encryption key from the workspace key. This allows
-members of the same workspace with shared-vault permission to read shared credentials.
+The Shared Vault supports two modes:
 
-This is not the final team-key architecture. Its boundary is:
+| Mode | Description |
+| --- | --- |
+| v1 compatibility | Derives the shared key from the workspace key. Used for legacy shared records or teams that have not configured a Shared Vault secret |
+| Crypto v2 | Uses a separate Shared Vault encryption secret. Team members configure the same value locally, and new shared records use that secret |
+
+The Crypto v2 Shared Vault secret is not sent as the `X-MacMima-Workspace-Key` request header.
+The workspace key remains an access and isolation key for the backend; the Shared Vault secret
+is used only for client-side encryption and decryption.
+
+Boundaries:
 
 - If only the database leaks, the attacker still does not get shared-vault plaintext,
   because the workspace key is not stored plaintext in the database.
-- If the backend runtime is fully compromised, an attacker may capture the workspace key
-  from request flow, memory, or misconfigured request-body logs.
-- If the workspace key is captured, Shared Vault risk increases.
+- For new v2 shared records, capturing only the workspace key is not enough to decrypt the Shared Vault.
+- If the team sends the Shared Vault secret to backend logs, chat history, or a public repository,
+  the v2 protection is defeated.
+- A malicious client can still read plaintext before encryption; that supply-chain boundary exists
+  for every client-side encryption tool.
 
-The roadmap is to move to per-user public-key wrapping for a random shared vault key,
-so Shared Vault encryption no longer depends directly on the workspace key.
+The roadmap is still to move to per-user public-key wrapping for a random shared vault key,
+which reduces the need for manual team secret distribution.
 
 ## Login Password Handling
 
@@ -88,9 +112,10 @@ If an attacker controls the backend runtime, risk is higher than a database-only
 
 - They may tamper with API responses, sync behavior, and permissions.
 - If request bodies are logged, login verification hashes or workspace keys may be exposed.
-- Shared Vault security may be affected if the workspace key is captured.
-- Personal Vault plaintext still depends on the user's master-password-derived key; the database
-  and login verifier alone do not directly decrypt Personal Vault ciphertext.
+- v1 Shared Vault security may be affected if the workspace key is captured. v2 Shared Vault
+  records also require the separate Shared Vault secret.
+- Personal Vault plaintext still depends on the user's master-password-derived key; v2 records
+  also require the local enhancement secret.
 
 Recommended response:
 
@@ -100,6 +125,8 @@ Recommended response:
 - Force users to re-login and evaluate whether users should change master passwords.
 - Rotate Shared Vault credentials at the provider side, such as API keys, database passwords,
   and SSH keys.
+- If the Shared Vault encryption secret may have leaked, generate a new one and re-save shared
+  credentials so they are re-encrypted.
 
 ## Local API Boundary
 
@@ -134,7 +161,7 @@ openssl rand -base64 32
 
 ## Hardening Roadmap
 
-- Replace workspace-key-derived Shared Vault encryption with per-user public-key wrapping.
+- Replace manually shared Shared Vault secrets with per-user public-key wrapping.
 - Add encrypted local backup and recovery-key flows.
 - Add full Prisma migrations instead of production `db push`.
 - Strengthen Electron sandboxing, code signing, and update-chain security.

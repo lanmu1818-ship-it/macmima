@@ -44,8 +44,13 @@ Contributors:
 ## Important Security Note
 
 The MacMima backend database does not store plaintext credential bodies. Website
-passwords, database passwords, API keys, SSH private keys, and connection strings
-are encrypted in the desktop app before they are synced to the backend.
+passwords, database passwords, API keys, SSH private keys, connection strings,
+Markdown documents, and database table notes are encrypted in the desktop app before
+they are synced to the backend.
+
+Crypto v2 supports a Personal Vault local enhancement secret and a separate Shared Vault
+encryption secret. Do not upload them to the backend, commit them, or paste them into
+Developer Discussion.
 
 Titles, categories, tags, and timestamps are plaintext metadata for listing and
 search. Do not put real secrets in titles or tags.

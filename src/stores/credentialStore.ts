@@ -4,7 +4,7 @@ export interface Credential {
   id: string
   userId?: string
   scope: 'personal' | 'shared'
-  category: 'server' | 'website' | 'api_key' | 'database' | 'other'
+  category: 'server' | 'website' | 'api_key' | 'database' | 'document' | 'other'
   title: string
   data: Record<string, any>
   tags: string[]

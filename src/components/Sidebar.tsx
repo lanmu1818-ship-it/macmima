@@ -1,15 +1,17 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Settings, LogOut, Shield, UserRound, UsersRound } from 'lucide-react'
+import { MessageSquare, Settings, LogOut, Shield, UserRound, UsersRound } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { logout, user } = useAuthStore()
+  const displayName = user?.displayName?.trim() || user?.username || ''
 
   const menuItems = [
     ...(user?.sharedAccess ? [{ path: '/shared', icon: UsersRound, label: '共享密区' }] : []),
     { path: '/credentials', icon: UserRound, label: '个人密区' },
+    { path: '/discussion', icon: MessageSquare, label: '开发讨论' },
     { path: '/settings', icon: Settings, label: '个人设置' },
     ...(user?.isAdmin ? [{ path: '/admin', icon: Shield, label: '系统设置' }] : []),
   ]
@@ -25,13 +27,21 @@ export default function Sidebar() {
       {user && (
         <div className="px-3 pb-3 pt-10 border-b border-gray-200 bg-white">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center shadow-md">
-              <span className="text-white font-semibold text-xs">
-                {user.username.charAt(0).toUpperCase()}
-              </span>
+            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center shadow-md overflow-hidden">
+              {user.avatarDataUrl ? (
+                <img
+                  src={user.avatarDataUrl}
+                  alt={displayName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-white font-semibold text-xs">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-900 truncate">{user.username}</p>
+              <p className="text-xs font-medium text-gray-900 truncate">{displayName}</p>
               <div className="flex items-center gap-1">
                 <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
                 {user.isAdmin && (

@@ -9,6 +9,38 @@ export interface EncryptedData {
   authTag: string
 }
 
+export interface CryptoProfileConfig {
+  enabled: boolean
+  kdfIterations: number
+  localSecret: string
+  sharedVaultSecret: string
+}
+
+export interface CredentialCryptoContext {
+  scope: 'personal' | 'shared'
+  personalKey: CryptoKey
+  sharedLegacyKey?: CryptoKey | null
+  cryptoProfile: CryptoProfileConfig
+}
+
+interface CredentialCryptoEnvelopeV2 {
+  schema: 'macmima.credential.crypto'
+  version: 2
+  mode: 'personal-local-secret' | 'shared-vault-secret'
+  alg: 'AES-256-GCM'
+  kdf: {
+    name: 'PBKDF2-SHA256'
+    iterations: number
+    salt: string
+  }
+  encrypted: string
+}
+
+const cryptoEnvelopeSchema = 'macmima.credential.crypto'
+const minKdfIterations = 100000
+const maxKdfIterations = 1000000
+const credentialKeyCache = new Map<string, CryptoKey>()
+
 /**
  * 从主密码派生加密密钥
  * 使用 PBKDF2 算法，100000 次迭代
@@ -49,6 +81,194 @@ export async function deriveKey(
 
 export async function deriveWorkspaceSharedKey(workspaceKey: string): Promise<CryptoKey> {
   return deriveKey(workspaceKey, 'macmima-workspace-shared-v1')
+}
+
+async function deriveKeyFromMaterial(
+  material: string,
+  salt: string,
+  iterations: number
+): Promise<CryptoKey> {
+  const encoder = new TextEncoder()
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(material),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits', 'deriveKey']
+  )
+
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode(salt),
+      iterations: clampKdfIterations(iterations),
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  )
+}
+
+async function exportKeyMaterial(key: CryptoKey): Promise<string> {
+  const rawKey = await crypto.subtle.exportKey('raw', key)
+  return arrayBufferToBase64(rawKey)
+}
+
+async function digestText(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return arrayBufferToBase64(digest)
+}
+
+async function getCachedCredentialKey(
+  material: string,
+  salt: string,
+  iterations: number
+): Promise<CryptoKey> {
+  const cacheKey = await digestText(`${material}:${salt}:${iterations}`)
+  const cachedKey = credentialKeyCache.get(cacheKey)
+  if (cachedKey) return cachedKey
+
+  const key = await deriveKeyFromMaterial(material, salt, iterations)
+  credentialKeyCache.set(cacheKey, key)
+  return key
+}
+
+function clampKdfIterations(iterations: number): number {
+  if (!Number.isFinite(iterations)) return 210000
+  return Math.min(Math.max(Math.round(iterations), minKdfIterations), maxKdfIterations)
+}
+
+function parseCredentialCryptoEnvelope(value: string): CredentialCryptoEnvelopeV2 | null {
+  if (!value.trim().startsWith('{')) return null
+
+  try {
+    const parsed = JSON.parse(value)
+    if (
+      parsed?.schema === cryptoEnvelopeSchema &&
+      parsed.version === 2 &&
+      parsed.alg === 'AES-256-GCM' &&
+      parsed.kdf?.name === 'PBKDF2-SHA256' &&
+      typeof parsed.encrypted === 'string'
+    ) {
+      return parsed
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+async function deriveCredentialV2Key(
+  envelope: Pick<CredentialCryptoEnvelopeV2, 'mode' | 'kdf'>,
+  context: CredentialCryptoContext
+): Promise<CryptoKey> {
+  if (envelope.mode === 'shared-vault-secret') {
+    if (!context.cryptoProfile.sharedVaultSecret) {
+      throw new Error('该共享凭证使用 v2 共享密钥加密，请在个人设置中导入共享密区加密密钥')
+    }
+
+    return getCachedCredentialKey(
+      `macmima:v2:shared:${context.cryptoProfile.sharedVaultSecret}`,
+      envelope.kdf.salt,
+      envelope.kdf.iterations
+    )
+  }
+
+  if (!context.cryptoProfile.localSecret) {
+    throw new Error('该个人凭证使用 v2 本地增强密钥加密，请在个人设置中导入本地增强密钥')
+  }
+
+  const personalKeyMaterial = await exportKeyMaterial(context.personalKey)
+  return getCachedCredentialKey(
+    `macmima:v2:personal:${personalKeyMaterial}:${context.cryptoProfile.localSecret}`,
+    envelope.kdf.salt,
+    envelope.kdf.iterations
+  )
+}
+
+export async function encryptCredentialData(
+  data: string,
+  context: CredentialCryptoContext
+): Promise<EncryptedData> {
+  const usePersonalV2 =
+    context.cryptoProfile.enabled &&
+    context.scope === 'personal' &&
+    Boolean(context.cryptoProfile.localSecret)
+  const useSharedV2 =
+    context.cryptoProfile.enabled &&
+    context.scope === 'shared' &&
+    Boolean(context.cryptoProfile.sharedVaultSecret)
+
+  if (!usePersonalV2 && !useSharedV2) {
+    if (context.scope === 'shared') {
+      if (!context.sharedLegacyKey) {
+        throw new Error('请先配置共享密区加密密钥，或使用兼容模式工作区 Key')
+      }
+
+      return encryptData(data, context.sharedLegacyKey)
+    }
+
+    return encryptData(data, context.personalKey)
+  }
+
+  const mode: CredentialCryptoEnvelopeV2['mode'] =
+    context.scope === 'shared' ? 'shared-vault-secret' : 'personal-local-secret'
+  const kdf = {
+    name: 'PBKDF2-SHA256' as const,
+    iterations: clampKdfIterations(context.cryptoProfile.kdfIterations),
+    salt:
+      context.scope === 'shared'
+        ? 'macmima-v2-shared-vault-secret'
+        : 'macmima-v2-personal-local-secret',
+  }
+  const key = await deriveCredentialV2Key({ mode, kdf }, context)
+  const encrypted = await encryptData(data, key)
+  const envelope: CredentialCryptoEnvelopeV2 = {
+    schema: cryptoEnvelopeSchema,
+    version: 2,
+    mode,
+    alg: 'AES-256-GCM',
+    kdf,
+    encrypted: encrypted.encrypted,
+  }
+
+  return {
+    encrypted: JSON.stringify(envelope),
+    iv: encrypted.iv,
+    authTag: encrypted.authTag,
+  }
+}
+
+export async function decryptCredentialData(
+  encryptedData: EncryptedData,
+  context: CredentialCryptoContext
+): Promise<string> {
+  const envelope = parseCredentialCryptoEnvelope(encryptedData.encrypted)
+
+  if (!envelope) {
+    if (context.scope === 'shared') {
+      if (!context.sharedLegacyKey) {
+        throw new Error('请先配置工作区 Key 以解密兼容模式共享凭证')
+      }
+
+      return decryptData(encryptedData, context.sharedLegacyKey)
+    }
+
+    return decryptData(encryptedData, context.personalKey)
+  }
+
+  const key = await deriveCredentialV2Key(envelope, context)
+  return decryptData(
+    {
+      encrypted: envelope.encrypted,
+      iv: encryptedData.iv,
+      authTag: encryptedData.authTag,
+    },
+    key
+  )
 }
 
 /**

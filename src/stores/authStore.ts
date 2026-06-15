@@ -6,6 +6,8 @@ interface User {
   id: string
   username: string
   email: string
+  displayName?: string | null
+  avatarDataUrl?: string | null
   salt: string
   isAdmin?: boolean
   sharedAccess?: boolean

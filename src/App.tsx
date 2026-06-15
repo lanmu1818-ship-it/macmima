@@ -2,19 +2,53 @@ import { HashRouter as Router, useLocation } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import LoginPage from './pages/LoginPage'
 import CredentialsPage from './pages/CredentialsPage'
+import DiscussionPage from './pages/DiscussionPage'
 import SettingsPage from './pages/SettingsPage'
 import AdminPage from './pages/AdminPage'
 import BackendSetupPage from './pages/BackendSetupPage'
 import MainLayout from './components/layouts/MainLayout'
 import LocalApiBridge from './components/LocalApiBridge'
-import { hasBackendConfig } from './services/api'
+import UpdateNotice from './components/UpdateNotice'
+import ChatNotificationBridge from './components/ChatNotificationBridge'
+import { loadBackendConfig } from './services/api'
 import { useEffect, useState } from 'react'
 import { UsersRound } from 'lucide-react'
+
+function RuntimeServices() {
+  return (
+    <>
+      <LocalApiBridge />
+      <ChatNotificationBridge />
+      <UpdateNotice />
+    </>
+  )
+}
 
 function AppContent() {
   const { isAuthenticated, user, refreshCurrentUser } = useAuthStore()
   const location = useLocation()
-  const [isBackendConfigured, setIsBackendConfigured] = useState(hasBackendConfig())
+  const [isBackendConfigured, setIsBackendConfigured] = useState(false)
+  const [isLoadingBackendConfig, setIsLoadingBackendConfig] = useState(true)
+
+  useEffect(() => {
+    let isMounted = true
+
+    loadBackendConfig()
+      .then((config) => {
+        if (isMounted) setIsBackendConfigured(Boolean(config))
+      })
+      .catch((error) => {
+        console.warn('读取后端配置失败:', error)
+        if (isMounted) setIsBackendConfigured(false)
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingBackendConfig(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!isAuthenticated) return
@@ -23,6 +57,10 @@ function AppContent() {
       console.warn('刷新用户权限失败:', error)
     })
   }, [isAuthenticated, refreshCurrentUser])
+
+  if (isLoadingBackendConfig) {
+    return <div className="h-screen bg-gray-100" />
+  }
 
   if (!isBackendConfigured) {
     return <BackendSetupPage onConfigured={() => setIsBackendConfigured(true)} />
@@ -35,8 +73,17 @@ function AppContent() {
   if (location.pathname === '/settings') {
     return (
       <MainLayout>
-        <LocalApiBridge />
+        <RuntimeServices />
         <SettingsPage />
+      </MainLayout>
+    )
+  }
+
+  if (location.pathname === '/discussion') {
+    return (
+      <MainLayout>
+        <RuntimeServices />
+        <DiscussionPage />
       </MainLayout>
     )
   }
@@ -44,7 +91,7 @@ function AppContent() {
   if (location.pathname === '/admin' && user?.isAdmin) {
     return (
       <MainLayout>
-        <LocalApiBridge />
+        <RuntimeServices />
         <AdminPage />
       </MainLayout>
     )
@@ -53,7 +100,7 @@ function AppContent() {
   if (location.pathname === '/shared') {
     return (
       <MainLayout>
-        <LocalApiBridge />
+        <RuntimeServices />
         {user?.sharedAccess ? (
           <CredentialsPage filter="shared" />
         ) : (
@@ -71,7 +118,7 @@ function AppContent() {
 
   return (
     <MainLayout>
-      <LocalApiBridge />
+      <RuntimeServices />
       <CredentialsPage filter="personal" />
     </MainLayout>
   )

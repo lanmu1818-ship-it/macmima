@@ -9,6 +9,7 @@ import {
   Globe,
   Key,
   Database,
+  FileText,
   Edit,
   Trash2,
   Star,
@@ -73,6 +74,8 @@ export default function CredentialDetail({
         return <Key size={24} className="text-gray-700" />
       case 'database':
         return <Database size={24} className="text-primary-600" />
+      case 'document':
+        return <FileText size={24} className="text-gray-700" />
       default:
         return <Key size={24} className="text-gray-600" />
     }
@@ -195,6 +198,39 @@ export default function CredentialDetail({
     )
   }
 
+  const renderDocument = () => {
+    const content = String(data.content || '')
+
+    return (
+      <>
+        {renderField('说明', data.description, 'description')}
+        {renderField('源文件', data.sourceFileName, 'sourceFileName')}
+        {content && (
+          <div className="py-3 border-b border-gray-100">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-sm font-medium text-gray-700">Markdown 正文</label>
+              <button
+                onClick={() => handleCopy(content, 'content')}
+                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                title="复制 Markdown 正文"
+              >
+                {copiedField === 'content' ? (
+                  <Check size={16} className="text-gray-900" />
+                ) : (
+                  <Copy size={16} />
+                )}
+              </button>
+            </div>
+            <pre className="max-h-[52vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-4 font-mono text-sm leading-6 text-gray-900">
+              {content}
+            </pre>
+          </div>
+        )}
+        {renderField('备注', data.notes, 'notes')}
+      </>
+    )
+  }
+
   const renderFields = () => {
     switch (credential.category) {
       case 'server':
@@ -253,6 +289,9 @@ export default function CredentialDetail({
           </>
         )
 
+      case 'document':
+        return renderDocument()
+
       default:
         return Object.entries(data).map(([key, value]) =>
           renderField(key, String(value), key, key.includes('password') || key.includes('secret'))
@@ -262,7 +301,11 @@ export default function CredentialDetail({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div
+        className={`bg-white rounded-xl shadow-2xl w-full max-h-[90vh] flex flex-col ${
+          credential.category === 'document' ? 'max-w-4xl' : 'max-w-2xl'
+        }`}
+      >
         {/* 头部 */}
         <div className="flex items-start gap-4 p-6 border-b border-gray-200">
           <div className="p-3 bg-gray-50 rounded-lg">{getCategoryIcon()}</div>
@@ -338,7 +381,7 @@ export default function CredentialDetail({
             ) : (
               <Copy size={18} />
             )}
-            复制全部
+            {credential.category === 'document' ? '复制正文' : '复制全部'}
           </button>
           {canDownloadPrivateKey(credential) && (
             <button

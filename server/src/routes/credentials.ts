@@ -98,7 +98,7 @@ router.post(
   '/',
   authenticateToken,
   [
-    body('category').isIn(['server', 'website', 'api_key', 'database', 'other']),
+    body('category').isIn(['server', 'website', 'api_key', 'database', 'document', 'other']),
     body('title').notEmpty().isLength({ max: 200 }),
     body('encryptedData').notEmpty(),
     body('iv').notEmpty(),

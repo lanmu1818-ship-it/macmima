@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowRight, Check, Copy, KeyRound, RefreshCw, Server } from 'lucide-react'
-import { normalizeBackendUrl, saveBackendConfig } from '@/services/api'
+import { normalizeBackendUrl, saveBackendConfigPersistent } from '@/services/api'
 import { copyToClipboard } from '@/utils/clipboard'
 
 interface BackendSetupPageProps {
@@ -12,6 +12,7 @@ export default function BackendSetupPage({ onConfigured }: BackendSetupPageProps
   const [workspaceKey, setWorkspaceKey] = useState('')
   const [error, setError] = useState('')
   const [copiedKey, setCopiedKey] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   const generateWorkspaceKey = () => {
     const bytes = new Uint8Array(24)
@@ -32,7 +33,7 @@ export default function BackendSetupPage({ onConfigured }: BackendSetupPageProps
     }
   }
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError('')
 
@@ -55,11 +56,18 @@ export default function BackendSetupPage({ onConfigured }: BackendSetupPageProps
       return
     }
 
-    saveBackendConfig({
-      backendUrl: normalizedUrl,
-      workspaceKey: key,
-    })
-    onConfigured()
+    try {
+      setIsSaving(true)
+      await saveBackendConfigPersistent({
+        backendUrl: normalizedUrl,
+        workspaceKey: key,
+      })
+      onConfigured()
+    } catch (saveError: any) {
+      setError(saveError.message || '保存配置失败')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -143,9 +151,10 @@ export default function BackendSetupPage({ onConfigured }: BackendSetupPageProps
 
           <button
             type="submit"
+            disabled={isSaving}
             className="w-full bg-black text-white py-3 px-4 rounded-lg hover:bg-gray-800 transition-all font-medium flex items-center justify-center gap-2 shadow-lg"
           >
-            保存并继续
+            {isSaving ? '保存中' : '保存并继续'}
             <ArrowRight className="w-5 h-5" />
           </button>
         </form>

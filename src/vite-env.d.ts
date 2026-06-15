@@ -20,7 +20,7 @@ interface LocalApiConfig {
 interface LocalApiCredentialRequest {
   requestId: string
   payload: {
-    category: 'server' | 'website' | 'api_key' | 'database' | 'other'
+    category: 'server' | 'website' | 'api_key' | 'database' | 'document' | 'other'
     scope: 'personal' | 'shared'
     title: string
     tags: string[]
@@ -40,10 +40,44 @@ interface LocalApiCredentialResult {
   }
 }
 
+interface CryptoProfileConfig {
+  enabled: boolean
+  kdfIterations: number
+  localSecret: string
+  sharedVaultSecret: string
+  updatedAt?: string
+}
+
+interface ReleaseManifest {
+  updatedAt: string
+  releases: Array<{
+    id: string
+    platform: 'macos' | 'windows'
+    arch: string
+    version: string
+    filename: string
+    size: number
+    sha256: string
+    downloadUrl: string
+    notes?: string
+    active: boolean
+    createdAt: string
+    updatedAt: string
+  }>
+}
+
 interface Window {
   electronAPI?: {
     getVersion: () => Promise<string>
     getPlatform: () => Promise<string>
+    getLatestRelease: () => Promise<ReleaseManifest>
+    openExternal: (url: string) => Promise<void>
+    getBackendConfig: () => Promise<BackendConfig | null>
+    setBackendConfig: (config: BackendConfig) => Promise<BackendConfig>
+    clearBackendConfig: () => Promise<boolean>
+    getCryptoProfile: () => Promise<CryptoProfileConfig>
+    setCryptoProfile: (config: CryptoProfileConfig) => Promise<CryptoProfileConfig>
+    generateCryptoSecret: () => Promise<string>
     minimize: () => void
     maximize: () => void
     close: () => void

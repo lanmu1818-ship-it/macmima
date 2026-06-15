@@ -7,12 +7,14 @@ import authRoutes from './routes/auth'
 import credentialRoutes from './routes/credentials'
 import syncRoutes from './routes/sync'
 import adminRoutes from './routes/admin'
+import chatRoutes from './routes/chat'
 
 dotenv.config()
 
 const app = express()
 const PORT = process.env.PORT || 3000
 const HOST = process.env.HOST || '127.0.0.1'
+const API_RATE_LIMIT_MAX = Number(process.env.API_RATE_LIMIT_MAX || 600)
 
 app.set('trust proxy', 1)
 
@@ -37,7 +39,7 @@ app.use(
 // 限流
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
-  max: 100, // 限制100次请求
+  max: Number.isFinite(API_RATE_LIMIT_MAX) && API_RATE_LIMIT_MAX > 0 ? API_RATE_LIMIT_MAX : 600,
   message: '请求过于频繁，请稍后再试',
 })
 app.use('/api/', limiter)
@@ -49,9 +51,10 @@ const authLimiter = rateLimit({
   message: '认证请求过多，请稍后再试',
 })
 
-// 解析JSON
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+// 解析JSON。聊天图片附件需要更大的请求体，其他接口保持较小上限。
+app.use('/api/chat', express.json({ limit: '8mb' }))
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -63,6 +66,7 @@ app.use('/api/auth', authLimiter, authRoutes)
 app.use('/api/credentials', credentialRoutes)
 app.use('/api/sync', syncRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/chat', chatRoutes)
 
 // 404处理
 app.use((req, res) => {

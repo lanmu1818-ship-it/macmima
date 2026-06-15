@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { api, getBackendConfig } from '@/services/api'
 import { Credential, useCredentialStore } from '@/stores/credentialStore'
 import { useAuthStore } from '@/stores/authStore'
-import { deriveWorkspaceSharedKey, encryptData } from '@/utils/crypto'
+import { deriveWorkspaceSharedKey, encryptCredentialData } from '@/utils/crypto'
+import { getOrCreateCryptoProfile } from '@/services/cryptoProfile'
 
 interface ApiCredential {
   id: string
@@ -35,6 +36,7 @@ function normalizeLocalApiPayload(payload: LocalApiCredentialPayload): LocalApiC
     'website',
     'api_key',
     'database',
+    'document',
     'other',
   ]
   const category = allowedCategories.includes(payload.category) ? payload.category : 'other'
@@ -70,11 +72,16 @@ export default function LocalApiBridge() {
 
       try {
         const normalizedPayload = normalizeLocalApiPayload(payload)
-        const encryptionKey =
-          normalizedPayload.scope === 'shared'
-            ? await deriveWorkspaceSharedKey(getBackendConfig()?.workspaceKey || '')
-            : masterKey
-        const encrypted = await encryptData(JSON.stringify(normalizedPayload.data), encryptionKey)
+        const cryptoProfile = await getOrCreateCryptoProfile()
+        const encrypted = await encryptCredentialData(JSON.stringify(normalizedPayload.data), {
+          scope: normalizedPayload.scope || 'personal',
+          personalKey: masterKey,
+          sharedLegacyKey:
+            normalizedPayload.scope === 'shared'
+              ? await deriveWorkspaceSharedKey(getBackendConfig()?.workspaceKey || '')
+              : null,
+          cryptoProfile,
+        })
         const response = await api.post('/credentials', {
           category: normalizedPayload.category,
           scope: normalizedPayload.scope,

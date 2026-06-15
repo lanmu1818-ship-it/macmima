@@ -13,6 +13,8 @@ model User {
   workspaceKeyHash String?    @map("workspace_key_hash") @db.VarChar(64)
   username      String        @db.VarChar(50)
   email         String        @db.VarChar(100)
+  displayName   String?       @map("display_name") @db.VarChar(60)
+  avatarDataUrl String?       @map("avatar_data_url") @db.MediumText
   passwordHash  String        @map("password_hash") @db.VarChar(255)
   salt          String        @db.VarChar(64)
   isAdmin       Boolean       @default(false) @map("is_admin")
@@ -26,6 +28,7 @@ model User {
   credentials   Credential[]
   syncLogs      SyncLog[]
   inviteCodes   InviteCode[]
+  chatMessages  WorkspaceChatMessage[]
   inviter       User?         @relation("UserInvites", fields: [invitedBy], references: [id])
   invitedUsers  User[]        @relation("UserInvites")
 
@@ -36,19 +39,6 @@ model User {
   @@unique([workspaceKeyHash, username])
   @@unique([workspaceKeyHash, email])
   @@map("users")
-}
-
-model Workspace {
-  id          String   @id @default(uuid())
-  keyHash     String   @unique @map("key_hash") @db.VarChar(64)
-  name        String   @default("MacMima 工作台") @db.VarChar(100)
-  createdBy   String?  @map("created_by")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@index([createdBy])
-  @@map("workspaces")
 }
 
 model InviteCode {
@@ -129,11 +119,30 @@ model SyncLog {
   @@map("sync_logs")
 }
 
+model WorkspaceChatMessage {
+  id               String   @id @default(uuid())
+  workspaceKeyHash String   @map("workspace_key_hash") @db.VarChar(64)
+  userId           String   @map("user_id")
+  content          String   @db.Text
+  attachments      Json?
+  masked           Boolean  @default(false)
+  deleted          Boolean  @default(false)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceKeyHash, createdAt])
+  @@index([userId])
+  @@map("workspace_chat_messages")
+}
+
 enum CredentialCategory {
   server
   website
   api_key
   database
+  document
   other
 }
 
