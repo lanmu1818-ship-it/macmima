@@ -22,9 +22,12 @@ const LOCAL_API_CONFIG_FILE = 'local-api.json'
 const APP_CONFIG_FILE = 'app-config.json'
 const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
 const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
+const APP_NAME = 'MacMima'
+const APP_ID = 'com.macmima.app'
 
+app.setName(APP_NAME)
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.macmima.app')
+  app.setAppUserModelId(APP_ID)
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -563,21 +566,29 @@ function shouldHideToTray() {
   return process.platform === 'win32' || process.platform === 'linux'
 }
 
-function getTrayIcon() {
+function getAppIcon(size?: number) {
   const candidates = [
     path.join(app.getAppPath(), 'build', 'icon.png'),
     path.join(process.resourcesPath, 'build', 'icon.png'),
     path.join(__dirname, '../build/icon.png'),
+    path.join(app.getAppPath(), 'public', 'icon.png'),
+    path.join(__dirname, '../public/icon.png'),
   ]
 
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue
 
     const icon = nativeImage.createFromPath(candidate)
-    if (!icon.isEmpty()) return icon.resize({ width: 16, height: 16 })
+    if (!icon.isEmpty()) {
+      return size ? icon.resize({ width: size, height: size }) : icon
+    }
   }
 
   return nativeImage.createEmpty()
+}
+
+function getTrayIcon() {
+  return getAppIcon(16)
 }
 
 function showMainWindow() {
@@ -624,6 +635,7 @@ function showNativeNotification(payload: AppNotificationPayload) {
   const notification = new ElectronNotification({
     title,
     body,
+    icon: getAppIcon(256),
     silent: false,
   })
 
@@ -684,6 +696,7 @@ function createWindow() {
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 15, y: 15 },
+    icon: getAppIcon(512),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -714,6 +727,10 @@ function createWindow() {
 
 app.whenReady().then(() => {
   localApiConfig = loadLocalApiConfig()
+  const dockIcon = getAppIcon(512)
+  if (!dockIcon.isEmpty()) {
+    app.dock?.setIcon(dockIcon)
+  }
 
   createWindow()
   createTray()
