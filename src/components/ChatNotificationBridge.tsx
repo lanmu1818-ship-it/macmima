@@ -40,7 +40,10 @@ function makeMessageBody(message: ChatMessage, count: number) {
   return `${sender}: ${summary}`
 }
 
-function messageMentionsCurrentUser(message: ChatMessage, user?: { username?: string; displayName?: string | null } | null) {
+function messageMentionsCurrentUser(
+  message: ChatMessage,
+  user?: { username?: string; displayName?: string | null } | null
+) {
   if (!user || !message.content) return false
 
   const candidates = [user.displayName?.trim(), user.username?.trim()]
@@ -50,7 +53,24 @@ function messageMentionsCurrentUser(message: ChatMessage, user?: { username?: st
   return candidates.some((mention) => message.content.includes(mention))
 }
 
+async function isWindowForeground() {
+  if (window.electronAPI?.isWindowFocused) {
+    return window.electronAPI.isWindowFocused()
+  }
+
+  return !document.hidden && document.hasFocus()
+}
+
 async function showSystemNotification(title: string, body: string, onClick: () => void) {
+  if (window.electronAPI?.showNotification) {
+    const shown = await window.electronAPI.showNotification({
+      title,
+      body,
+      route: '/discussion',
+    })
+    if (shown) return
+  }
+
   if (!('Notification' in window)) return
 
   let permission = Notification.permission
@@ -87,15 +107,16 @@ export default function ChatNotificationBridge() {
   }
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      latestCreatedAtRef.current = ''
-      initializedRef.current = false
-      notifiedIdsRef.current.clear()
-      setNotice(null)
-      return
-    }
+    return window.electronAPI?.onNavigate?.((route) => {
+      if (route.startsWith('/')) {
+        setNotice(null)
+        navigate(route)
+      }
+    })
+  }, [navigate])
 
-    if (location.pathname === '/discussion') {
+  useEffect(() => {
+    if (!isAuthenticated) {
       latestCreatedAtRef.current = ''
       initializedRef.current = false
       notifiedIdsRef.current.clear()
@@ -137,10 +158,16 @@ export default function ChatNotificationBridge() {
         )
 
         messages.forEach((message) => notifiedIdsRef.current.add(message.id))
-        if (incomingMessages.length === 0 || location.pathname === '/discussion') return
+        if (incomingMessages.length === 0) return
+
+        const isForegroundDiscussion =
+          location.pathname === '/discussion' && (await isWindowForeground())
+        if (isForegroundDiscussion) return
 
         const latestMessage = incomingMessages[incomingMessages.length - 1]
-        const mentioned = incomingMessages.some((message) => messageMentionsCurrentUser(message, user))
+        const mentioned = incomingMessages.some((message) =>
+          messageMentionsCurrentUser(message, user)
+        )
         const body = makeMessageBody(latestMessage, incomingMessages.length)
         const nextNotice = {
           title: mentioned ? '有人在开发讨论 @ 你' : '开发讨论有新消息',

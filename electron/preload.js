@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+  isWindowFocused: () => ipcRenderer.invoke('app:is-window-focused'),
+  showNotification: (payload) => ipcRenderer.invoke('app:show-notification', payload),
   getLatestRelease: () => ipcRenderer.invoke('app:getLatestRelease'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   getBackendConfig: () => ipcRenderer.invoke('backend-config:get'),
@@ -32,6 +34,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   onLock: (callback) => {
     ipcRenderer.on('app:lock', callback)
+  },
+  onNavigate: (callback) => {
+    const listener = (_event, route) => {
+      callback(route)
+    }
+
+    ipcRenderer.on('app:navigate', listener)
+    return () => ipcRenderer.removeListener('app:navigate', listener)
   },
   removeAllListeners: (channel) => {
     ipcRenderer.removeAllListeners(channel)

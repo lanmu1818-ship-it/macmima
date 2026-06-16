@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 应用控制
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
   getPlatform: () => ipcRenderer.invoke('app:getPlatform'),
+  isWindowFocused: () => ipcRenderer.invoke('app:is-window-focused'),
+  showNotification: (payload: AppNotificationPayload) =>
+    ipcRenderer.invoke('app:show-notification', payload),
   getLatestRelease: () => ipcRenderer.invoke('app:getLatestRelease'),
   openExternal: (url: string) => ipcRenderer.invoke('app:openExternal', url),
   getBackendConfig: () => ipcRenderer.invoke('backend-config:get'),
@@ -36,6 +39,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 监听事件
   onLock: (callback: () => void) => {
     ipcRenderer.on('app:lock', callback)
+  },
+  onNavigate: (callback: (route: string) => void) => {
+    const listener = (_event: IpcRendererEvent, route: string) => {
+      callback(route)
+    }
+
+    ipcRenderer.on('app:navigate', listener)
+    return () => ipcRenderer.removeListener('app:navigate', listener)
   },
 
   // 清理监听器
@@ -90,9 +101,17 @@ export interface LocalApiCredentialResult {
   }
 }
 
+export interface AppNotificationPayload {
+  title: string
+  body?: string
+  route?: string
+}
+
 export interface ElectronAPI {
   getVersion: () => Promise<string>
   getPlatform: () => Promise<string>
+  isWindowFocused: () => Promise<boolean>
+  showNotification: (payload: AppNotificationPayload) => Promise<boolean>
   getLatestRelease: () => Promise<ReleaseManifest>
   openExternal: (url: string) => Promise<void>
   getBackendConfig: () => Promise<BackendConfig | null>
@@ -110,6 +129,7 @@ export interface ElectronAPI {
   onLocalApiCredential: (callback: (request: LocalApiCredentialRequest) => void) => () => void
   sendLocalApiCredentialResult: (result: LocalApiCredentialResult) => void
   onLock: (callback: () => void) => void
+  onNavigate: (callback: (route: string) => void) => () => void
   removeAllListeners: (channel: string) => void
 }
 

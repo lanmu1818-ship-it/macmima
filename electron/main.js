@@ -7,6 +7,7 @@ const {
   shell,
   Menu,
   nativeImage,
+  Notification: ElectronNotification,
   Tray,
 } = require('electron')
 const { createServer } = require('http')
@@ -20,6 +21,10 @@ const LOCAL_API_CONFIG_FILE = 'local-api.json'
 const APP_CONFIG_FILE = 'app-config.json'
 const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
 const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
+
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.macmima.app')
+}
 
 let mainWindow = null
 let tray = null
@@ -552,6 +557,53 @@ function showMainWindow() {
   mainWindow.focus()
 }
 
+function isMainWindowForeground() {
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() && mainWindow.isFocused())
+}
+
+function sendRendererNavigation(route) {
+  if (!route || !route.startsWith('/') || !mainWindow || mainWindow.isDestroyed()) return
+
+  const send = () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('app:navigate', route)
+  }
+
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', send)
+    return
+  }
+
+  send()
+}
+
+function showNativeNotification(payload) {
+  const title = typeof payload?.title === 'string' ? payload.title.trim() : ''
+  const body = typeof payload?.body === 'string' ? payload.body.trim() : ''
+  const route = typeof payload?.route === 'string' ? payload.route.trim() : ''
+
+  if (!title || !ElectronNotification.isSupported()) return false
+
+  const notification = new ElectronNotification({
+    title,
+    body,
+    silent: false,
+  })
+
+  notification.on('click', () => {
+    showMainWindow()
+    sendRendererNavigation(route)
+  })
+
+  notification.show()
+
+  if (process.platform === 'darwin') {
+    app.dock?.bounce('informational')
+  }
+
+  return true
+}
+
 function updateTrayMenu() {
   if (!tray) return
 
@@ -600,6 +652,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: false,
     },
   })
 
@@ -611,7 +664,7 @@ function createWindow() {
   }
 
   mainWindow.on('close', (event) => {
-    if (shouldHideToTray() && !isQuitting) {
+    if (!isQuitting) {
       event.preventDefault()
       if (mainWindow) mainWindow.hide()
     }
@@ -676,6 +729,14 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getPlatform', () => {
   return process.platform
+})
+
+ipcMain.handle('app:is-window-focused', () => {
+  return isMainWindowForeground()
+})
+
+ipcMain.handle('app:show-notification', (_event, payload) => {
+  return showNativeNotification(payload)
 })
 
 ipcMain.handle('app:getLatestRelease', async () => {

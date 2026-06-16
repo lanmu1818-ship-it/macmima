@@ -70,6 +70,12 @@ interface Window {
   electronAPI?: {
     getVersion: () => Promise<string>
     getPlatform: () => Promise<string>
+    isWindowFocused: () => Promise<boolean>
+    showNotification: (payload: {
+      title: string
+      body?: string
+      route?: string
+    }) => Promise<boolean>
     getLatestRelease: () => Promise<ReleaseManifest>
     openExternal: (url: string) => Promise<void>
     getBackendConfig: () => Promise<BackendConfig | null>
@@ -89,6 +95,7 @@ interface Window {
     generateLocalApiKey: () => Promise<string>
     onLocalApiCredential: (callback: (request: LocalApiCredentialRequest) => void) => () => void
     sendLocalApiCredentialResult: (result: LocalApiCredentialResult) => void
+    onNavigate: (callback: (route: string) => void) => () => void
     removeAllListeners: (channel: string) => void
   }
 }
