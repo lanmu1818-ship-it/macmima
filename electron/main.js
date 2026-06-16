@@ -23,7 +23,9 @@ const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
 const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
 const APP_NAME = 'MacMima'
 const APP_ID = 'com.macmima.app'
+const APP_USER_DATA_DIR = 'macmima'
 
+app.setPath('userData', path.join(app.getPath('appData'), APP_USER_DATA_DIR))
 app.setName(APP_NAME)
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_ID)
