@@ -1,7 +1,7 @@
 {
   "name": "macmima",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.7",
   "description": "MacMima secure password manager with end-to-end encryption",
   "author": "MacMima Team",
   "main": "electron/main.js",

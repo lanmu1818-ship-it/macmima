@@ -9,6 +9,7 @@ import {
   nativeImage,
   Notification as ElectronNotification,
   Tray,
+  dialog,
 } from 'electron'
 import { createServer } from 'http'
 import type { IncomingMessage, Server, ServerResponse } from 'http'
@@ -22,12 +23,12 @@ const LOCAL_API_CONFIG_FILE = 'local-api.json'
 const APP_CONFIG_FILE = 'app-config.json'
 const CRYPTO_PROFILE_FILE = 'crypto-profile.json'
 const RELEASES_URL = 'https://macmima.flnxi.com/website-api/releases'
-const APP_NAME = 'MacMima'
 const APP_ID = 'com.macmima.app'
+const APP_SAFE_STORAGE_NAME = 'macmima'
 const APP_USER_DATA_DIR = 'macmima'
 
 app.setPath('userData', path.join(app.getPath('appData'), APP_USER_DATA_DIR))
-app.setName(APP_NAME)
+app.setName(APP_SAFE_STORAGE_NAME)
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_ID)
 }
@@ -66,6 +67,13 @@ interface CryptoProfileConfig {
   localSecret: string
   sharedVaultSecret: string
   updatedAt?: string
+}
+
+interface CryptoProfileBackup {
+  schema: 'macmima.crypto-profile.backup'
+  version: 1
+  exportedAt: string
+  profile: CryptoProfileConfig
 }
 
 interface AppNotificationPayload {
@@ -178,6 +186,34 @@ function saveCryptoProfile(config: Partial<CryptoProfileConfig>) {
   )
 
   return normalizedProfile
+}
+
+function createCryptoProfileBackup(profile: CryptoProfileConfig): CryptoProfileBackup {
+  return {
+    schema: 'macmima.crypto-profile.backup',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    profile: normalizeCryptoProfile(profile),
+  }
+}
+
+function parseCryptoProfileBackup(value: unknown): CryptoProfileConfig {
+  const backup = value as Partial<CryptoProfileBackup> | null
+  if (
+    !backup ||
+    backup.schema !== 'macmima.crypto-profile.backup' ||
+    backup.version !== 1 ||
+    !backup.profile
+  ) {
+    throw new Error('备份文件格式不正确')
+  }
+
+  const profile = normalizeCryptoProfile(backup.profile)
+  if (!profile.localSecret && !profile.sharedVaultSecret) {
+    throw new Error('备份文件中没有可导入的加密密钥')
+  }
+
+  return profile
 }
 
 function normalizeBackendConfig(config?: Partial<BackendConfig> | null): BackendConfig | null {
@@ -841,6 +877,37 @@ ipcMain.handle('crypto-profile:set', (_event, config: CryptoProfileConfig) => {
 
 ipcMain.handle('crypto-profile:generate-secret', () => {
   return generateCryptoSecret()
+})
+
+ipcMain.handle('crypto-profile:export-backup', async (_event, profile?: CryptoProfileConfig) => {
+  const backup = createCryptoProfileBackup(profile ? normalizeCryptoProfile(profile) : loadCryptoProfile())
+  const timestamp = backup.exportedAt.replace(/[:.]/g, '-')
+  const result = await dialog.showSaveDialog({
+    title: '导出 MacMima 加密配置备份',
+    defaultPath: `macmima-crypto-backup-${timestamp}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+
+  if (result.canceled || !result.filePath) return { canceled: true }
+
+  writeFileSync(result.filePath, JSON.stringify(backup, null, 2), { mode: 0o600 })
+  return { canceled: false, filePath: result.filePath }
+})
+
+ipcMain.handle('crypto-profile:import-backup', async () => {
+  const result = await dialog.showOpenDialog({
+    title: '导入 MacMima 加密配置备份',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  })
+
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true }
+
+  const filePath = result.filePaths[0]
+  const profile = parseCryptoProfileBackup(JSON.parse(readFileSync(filePath, 'utf8')))
+  const savedProfile = saveCryptoProfile(profile)
+
+  return { canceled: false, filePath, profile: savedProfile }
 })
 
 ipcMain.handle('local-api:get-config', () => {

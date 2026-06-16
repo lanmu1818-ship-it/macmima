@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCryptoProfile: () => ipcRenderer.invoke('crypto-profile:get'),
   setCryptoProfile: (config) => ipcRenderer.invoke('crypto-profile:set', config),
   generateCryptoSecret: () => ipcRenderer.invoke('crypto-profile:generate-secret'),
+  exportCryptoProfileBackup: (config) =>
+    ipcRenderer.invoke('crypto-profile:export-backup', config),
+  importCryptoProfileBackup: () => ipcRenderer.invoke('crypto-profile:import-backup'),
   minimize: () => ipcRenderer.send('app:minimize'),
   maximize: () => ipcRenderer.send('app:maximize'),
   close: () => ipcRenderer.send('app:close'),

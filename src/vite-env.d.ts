@@ -84,6 +84,15 @@ interface Window {
     getCryptoProfile: () => Promise<CryptoProfileConfig>
     setCryptoProfile: (config: CryptoProfileConfig) => Promise<CryptoProfileConfig>
     generateCryptoSecret: () => Promise<string>
+    exportCryptoProfileBackup: (config: CryptoProfileConfig) => Promise<{
+      canceled: boolean
+      filePath?: string
+    }>
+    importCryptoProfileBackup: () => Promise<{
+      canceled: boolean
+      filePath?: string
+      profile?: CryptoProfileConfig
+    }>
     minimize: () => void
     maximize: () => void
     close: () => void
